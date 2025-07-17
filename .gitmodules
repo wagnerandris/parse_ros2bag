@@ -1,0 +1,12 @@
+[submodule "src/ros2bag_tools"]
+	path = src/ros2bag_tools
+	url = https://github.com/AIT-Assistive-Autonomous-Systems/ros2bag_tools
+[submodule "ros2-csv-kml_converter"]
+	path = ros2-csv-kml_converter
+	url = https://github.com/kovbando/ros2-csv-kml_converter.git
+[submodule "create_preview"]
+	path = create_preview
+	url = https://github.com/kovbando/create_preview.git
+[submodule "person_and_licenceplate_blurring"]
+	path = person_and_licenceplate_blurring
+	url = https://github.com/kovbando/person_and_licenceplate_blurring.git
