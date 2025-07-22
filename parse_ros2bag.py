@@ -2,24 +2,36 @@
 
 import argparse
 import rosbag2_py
-# TODO wtf
-import rosbag2_tools
-import ros2bag_tools
+import subprocess
 
 
 def get_topics(bag):
-    info = rosbag2_py.Info()
-    metadata = info.read_metadata(bag, 'sqlite3')
 
-    return [t.topic_metadata.name for t in metadata.topics_with_message_count]
+    image_topics = []
+    return image_topics
 
 
 def parse_ros2bag(bag, output, camera_num, blur):
-    topics = get_topics(bag)
-    # TODO check topics against camera_num
-    print(topics)
+    # get topics
+    info = rosbag2_py.Info()
+    metadata = info.read_metadata(bag, 'sqlite3')
 
-    # TODO export images
+    # image topics
+    image_topic_names = [t.topic_metadata.name
+                        for t in metadata.topics_with_message_count
+                        if t.topic_metadata.type == 'sensor_msgs/msg/Image']
+
+    image_export_processes = []
+    for t in image_topic_names:
+        image_export_processes.append(subprocess.Popen([
+            "ros2", "bag", "export",
+            "--in", bag,
+            "-t", t, "image",
+            "--dir", '.' + t
+            ]))
+
+    for p in image_export_processes:
+        p.wait()
 
     # TODO sync
     # TODO export synced images
@@ -33,6 +45,7 @@ def parse_ros2bag(bag, output, camera_num, blur):
     # TODO convert to kml
 
     # TODO file structure
+    
 
 
 if __name__ == '__main__':
