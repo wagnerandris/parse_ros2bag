@@ -4,11 +4,11 @@ import argparse
 import rosbag2_py
 import subprocess
 import os
-
-scriptpath = os.path.dirname(os.path.realpath(__file__))
+import shutil
 
 
 def parse_ros2bag(bag, output, camera_num, blur):
+    scriptpath = os.path.dirname(os.path.realpath(__file__))
     image_topic_names = []
     pointcloud_topic_names = []
     misc_topic_names = []
@@ -105,11 +105,16 @@ def parse_ros2bag(bag, output, camera_num, blur):
                 '-o', output + '/blurred_images' + t,
                 ],
                 cwd=scriptpath + '/person_and_licenceplate_blurring')
-    #
-    #     # wait for synced image exports to finish
-    #     for p in synced_image_export_processes:
-    #         p.wait()
-    #         # TODO go through synced, replace with blurred
+
+        # wait for synced image exports to finish
+        for p, t in zip(synced_image_export_processes, image_topic_names):
+            p.wait()
+
+            # go through synced images' folder and copy their blurred version in it
+            for f in os.listdir(output + '/synced_topics' + t):
+                shutil.copy(output + '/blurred_images' + t +
+                            '/' + os.path.splitext(f)[0] + '.jpg',
+                            output + '/synced_topics' + t)
 
     # TODO create video
 
