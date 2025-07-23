@@ -3,12 +3,13 @@
 import argparse
 import rosbag2_py
 import subprocess
+import threading
 import os
 import shutil
+from create_preview import unite_images
 
 
-def parse_ros2bag(bag, output, camera_num, blur):
-    scriptpath = os.path.dirname(os.path.realpath(__file__))
+class ROS2BagParser:
     image_topic_names = []
     pointcloud_topic_names = []
     misc_topic_names = []
@@ -24,108 +25,208 @@ def parse_ros2bag(bag, output, camera_num, blur):
             'std_msgs/msg/Int32': misc_topic_names,
             }
 
-    # get topics
-    info = rosbag2_py.Info()
-    metadata = info.read_metadata(bag, 'sqlite3')
+    def __init__(self, bag, output_path, blur, keep, ffmpeg_args):
+        self.script_path = os.path.dirname(os.path.realpath(__file__))
+        self.bag = bag
+        self.output_path = output_path
+        self.image_path = os.path.join(output_path, 'images')
+        self.synced_path = os.path.join(output_path, 'synced_topics')
+        self.blurred_path = os.path.join(output_path, 'blurred_images') if blur else None
+        self.preview_path = os.path.join(output_path, 'previews')
+        self.pointcloud_path = os.path.join(output_path, 'pointclouds')
+        self.misc_path = os.path.join(output_path, 'misc_topics')
+        self.keep = keep
+        self.ffmpeg_args = ffmpeg_args
 
-    # separate topic types we care about into lists
-    for t in metadata.topics_with_message_count:
-        topic_names = topic_types.get(t.topic_metadata.type)
-        if topic_names is not None:
-            topic_names.append(t.topic_metadata.name)
+        # for preview
+        self.folders = [
+            self.synced_path + '/image_1_',  # top-left
+            self.synced_path + '/image_2_',  # top-right
+            self.synced_path + '/image_0_',  # middle-left
+            self.synced_path + '/image_5_',  # middle-right
+            self.synced_path + '/image_3_',  # bottom-left
+            self.synced_path + '/image_4_',  # bottom-right
+        ]
 
-    # export pointclouds
-    pointcloud_export_processes = []
-    for t in pointcloud_topic_names:
-        subprocess.Popen([
+    def parse_pointclouds(self):
+        # export pointclouds
+        pointcloud_export_processes = []
+        for t in self.pointcloud_topic_names:
+            pointcloud_export_processes.append(subprocess.Popen([
+                'ros2', 'bag', 'export',
+                '--in', self.bag,
+                '-t', t, 'pcd',
+                '--dir', self.pointcloud_path + t,
+                ]))
+
+        # wait for pointcloud exports to finish
+        for p in pointcloud_export_processes:
+            p.wait()
+
+        # zip pointclouds
+        shutil.make_archive(self.output_path + '/pointcloud', 'zip', self.pointcloud_path)
+
+        if not self.keep:
+            # cleanup
+            shutil.rmtree(self.pointcloud_path)
+
+    def export_images(self, image_topic_name):
+        # export images
+        subprocess.run([
             'ros2', 'bag', 'export',
-            '--in', bag,
-            '-t', t, 'pcd',
-            '--dir', output + t,
+            '--in', self.bag,
+            '-t', image_topic_name, 'image',
+            '--dir', self.image_path + image_topic_name,
             ])
 
-    # export images
-    image_export_processes = []
-    for t in image_topic_names:
-        image_export_processes.append(subprocess.Popen([
-            'ros2', 'bag', 'export',
-            '--in', bag,
-            '-t', t, 'image',
-            '--dir', output + t,
-            ]))
+        if self.blurred_path:
+            # only one thread can run the blurring script at a time
+            with self.blurring_lock:
+                subprocess.run([
+                    'python3', 'licenseplate_test.py',
+                    '-i', self.image_path + image_topic_name,
+                    '-o', self.blurred_path + image_topic_name,
+                    ],
+                    cwd=self.script_path + '/person_and_licenceplate_blurring')
 
-    # extract misc topics
-    misc_extract_process = subprocess.Popen([
-        'ros2', 'bag', 'extract',
-        bag,
-        '-t', *misc_topic_names,
-        '-o', output + '/misc_topics'
-        ])
+    def copy_blurred(self, thread, proc, topic):
+        # wait for blur thread
+        thread.join()
 
-    # wait for misc extract to finish
-    misc_extract_process.wait()
+        # wait for synced export process
+        proc.wait()
 
-    conversion_process = subprocess.Popen(['ros2bag-convert', output + '/misc_topics/misc_topics_0.db3'])
+        # go through synced images' folder and copy their blurred version in it
+        for f in os.listdir(self.synced_path + topic):
+            # remove original to avoid duplicates if there are .pngs (may be unneccessary)
+            os.remove(os.path.join(self.synced_path + topic, f))
 
-    # wait for conversion to csv to finish
-    conversion_process.wait()
+            # copy blurred version (always .jpg)
+            shutil.copy(self.blurred_path + topic +
+                        '/' + os.path.splitext(f)[0] + '.jpg',
+                        self.synced_path + topic)
 
-    subprocess.Popen([
-        'python3', scriptpath + '/ros2-csv-kml_converter/csv-to-kml.py',
-        'misc_topics'],
-        cwd=output)
+    def create_preview(self):
+        # unite images
+        unite_images(self.folders, self.preview_path)
 
-    sync_process = subprocess.Popen([
-        'ros2', 'bag', 'sync',
-        bag,
-        '-t', *image_topic_names,
-        '-o', output + '/synced_topics',
-        ])
-
-    # wait for syncronization to finish
-    sync_process.wait()
-
-    # export synced images (with the same topic names as before)
-    synced_image_export_processes = []
-    for t in image_topic_names:
-        synced_image_export_processes.append(subprocess.Popen([
-            'ros2', 'bag', 'export',
-            '--in', output + '/synced_topics/synced_topics_0.db3',
-            '-t', t, 'image',
-            '--dir', output + '/synced_topics' + t,
-            ]))
-
-    if blur:
-        # wait for image exports to finish and start blurring
-        for p, t in zip(image_export_processes, image_topic_names):
-            p.wait()
+        # create video
+        if self.ffmpeg_args:
+            # Split the ffmpeg options string into a list of arguments
             subprocess.run([
-                'python3', 'licenseplate_test.py',
-                '-i', output + t,
-                '-o', output + '/blurred_images' + t,
-                ],
-                cwd=scriptpath + '/person_and_licenceplate_blurring')
+                'ffmpeg',
+                self.output_path + '/preview.mp4',
+                '-i', 'frame_%04d.jpg'
+                ] + self.ffmpeg_args, cwd=self.preview_path)
 
-        # wait for synced image exports to finish
-        for p, t in zip(synced_image_export_processes, image_topic_names):
-            p.wait()
+    def parse_images(self):
+        self.blurring_lock = threading.Lock()
 
-            # go through synced images' folder and copy their blurred version in it
-            for f in os.listdir(output + '/synced_topics' + t):
-                shutil.copy(output + '/blurred_images' + t +
-                            '/' + os.path.splitext(f)[0] + '.jpg',
-                            output + '/synced_topics' + t)
+        # export (and blur) images
+        image_export_threads = []
+        for t in self.image_topic_names:
+            image_export_threads.append(threading.Thread(target=self.export_images, args=(t,)))
+            image_export_threads[-1].start()
 
-    # TODO create video
+        # syncronize
+        subprocess.run([
+            'ros2', 'bag', 'sync',
+            self.bag,
+            '-t', *self.image_topic_names,
+            '-o', self.synced_path
+            ])
 
-    # wait for pointcloud exports to finish
-    for p in pointcloud_export_processes:
-        p.wait()
+        # export synced images
+        synced_image_export_processes = []
+        for t in self.image_topic_names:
+            synced_image_export_processes.append(subprocess.Popen([
+                'ros2', 'bag', 'export',
+                '--in', self.synced_path + '/synced_topics_0.db3',
+                '-t', t, 'image',
+                '--dir', self.synced_path + t,
+                ]))
 
-    # TODO file structure
+        # if blurring is needed
+        if self.blurred_path:
+            copying_threads = []
+            # for each topic
+            for thread, proc, topic in zip(image_export_threads,
+                                           synced_image_export_processes,
+                                           self.image_topic_names):
+                # on a new thread wait for the corresponding synced and blurred images,
+                # then replace the synced ones with the corresponding blurred ones
+                copying_threads.append(threading.Thread(target=self.copy_blurred, args=(thread, proc, topic)))
+                copying_threads[-1].start()
 
-    # TODO separate pipelines to separate subprocesses
+            # wait for image exports to finish
+            for t in image_export_threads:
+                t.join()
 
+            # zip images
+            shutil.make_archive(self.output_path + '/pictures', 'zip', self.blurred_path)
+
+            # wait for copying to finish (image exports always precede)
+            for t in copying_threads:
+                t.join()
+            # create preview video
+            self.create_preview()
+
+        else:
+            # wait for image exports to finish
+            for t in image_export_threads:
+                t.join()
+            # zip images
+            shutil.make_archive(self.output_path + '/pictures', 'zip', self.image_path)
+
+            # wait for all synced exports then preview then video (probably preceded by image exports)
+            for p in synced_image_export_processes:
+                p.wait()
+            # create preview video
+            self.create_preview()
+
+        if not self.keep:
+            # cleanup
+            shutil.rmtree(self.image_path)
+            shutil.rmtree(self.synced_path)
+            shutil.rmtree(self.blurred_path)
+            shutil.rmtree(self.preview_path)
+
+    def parse_misc(self):
+        # extract misc topics
+        subprocess.run([
+            'ros2', 'bag', 'extract',
+            self.bag,
+            '-t', *self.misc_topic_names,
+            '-o', self.misc_path
+            ])
+
+        # convert to csv
+        subprocess.run(['ros2bag-convert', self.misc_path + '/misc_topics_0.db3'])
+
+        # convert to kml
+        subprocess.run([
+            'python3', self.script_path + '/ros2-csv-kml_converter/csv-to-kml.py',
+            self.misc_path
+            ])
+
+        if not self.keep:
+            shutil.rmtree(self.misc_path + 'fix.csv')
+
+    def parse_ros2bag(self):
+        # get topics
+        info = rosbag2_py.Info()
+        metadata = info.read_metadata(self.bag, 'sqlite3')
+
+        # separate topic types we care about into lists
+        for t in metadata.topics_with_message_count:
+            topic_names = self.topic_types.get(t.topic_metadata.type)
+            if topic_names is not None:
+                topic_names.append(t.topic_metadata.name)
+
+        # start independent parsing pipelines
+        threading.Thread(target=self.parse_pointclouds).start()
+        threading.Thread(target=self.parse_misc).start()
+        self.parse_images()
 
 if __name__ == '__main__':
     # Parse command-line arguments
@@ -136,18 +237,26 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--output_dir',
                         type=str, required=False, default='.',
                         help='Path to the output folder')
-    parser.add_argument('-c', '--camera_num',
-                        type=str, required=False, default=None,
-                        help='Number of cameras to consider')
     parser.add_argument('-b', '--blur',
                         action='store_true',
                         help='Blur faces and license plates')
+    parser.add_argument('-k', '--keep-intermediary',
+                        action='store_true',
+                        help='Keep intermediary files')
+    parser.add_argument('-f', '--ffmpeg',
+                        nargs=argparse.REMAINDER,
+                        help='FFmpeg options for creating video output (without input and output options)')
+
+    args = parser.parse_args()
+
     # TODO verbose/silent
-    # TODO keep intermediary files
     # TODO checks
 
     args = parser.parse_args()
-    parse_ros2bag(args.input,
-                  os.path.realpath(args.output_dir),
-                  args.camera_num,
-                  args.blur)
+
+    bag_parser = ROS2BagParser(args.input,
+                               os.path.realpath(args.output_dir),
+                               args.blur,
+                               args.keep_intermediary,
+                               args.ffmpeg)
+    bag_parser.parse_ros2bag()
