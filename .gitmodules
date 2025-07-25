@@ -17,3 +17,6 @@
 	path = src/geographic_info
 	url = https://github.com/ros-geographic-info/geographic_info.git
 	branch = ros2
+[submodule "create_preveiw"]
+	path = create_preview
+	url = https://github.com/wagnerandris/create_preview.git

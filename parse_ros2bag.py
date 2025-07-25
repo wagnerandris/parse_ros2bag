@@ -4,9 +4,10 @@ import argparse
 import rosbag2_py
 import subprocess
 import threading
+import multiprocessing
 import os
 import shutil
-from create_preview import unite_images
+import zipfile
 
 
 class ROS2BagParser:
@@ -25,7 +26,7 @@ class ROS2BagParser:
             'std_msgs/msg/Int32': misc_topic_names,
             }
 
-    def __init__(self, bag, output_path, blur, keep, ffmpeg_args):
+    def __init__(self, bag, output_path, blur, keep, config, ffmpeg_args):
         self.script_path = os.path.dirname(os.path.realpath(__file__))
         self.bag = bag
         self.output_path = output_path
@@ -36,17 +37,8 @@ class ROS2BagParser:
         self.pointcloud_path = os.path.join(output_path, 'pointclouds')
         self.misc_path = os.path.join(output_path, 'misc_topics')
         self.keep = keep
+        self.config = os.path.realpath(config)
         self.ffmpeg_args = ffmpeg_args
-
-        # for preview
-        self.folders = [
-            self.synced_path + '/image_1_',  # top-left
-            self.synced_path + '/image_2_',  # top-right
-            self.synced_path + '/image_0_',  # middle-left
-            self.synced_path + '/image_5_',  # middle-right
-            self.synced_path + '/image_3_',  # bottom-left
-            self.synced_path + '/image_4_',  # bottom-right
-        ]
 
     def parse_pointclouds(self):
         # export pointclouds
@@ -108,16 +100,26 @@ class ROS2BagParser:
 
     def create_preview(self):
         # unite images
-        unite_images(self.folders, self.preview_path)
+        subprocess.run([
+            'python3', self.script_path + '/create_preview/create_preview.py',
+            '-c', self.config,
+            '-o', self.preview_path
+            ], cwd=self.synced_path)
 
         # create video
         if self.ffmpeg_args:
-            # Split the ffmpeg options string into a list of arguments
+            # with additional args
             subprocess.run([
                 'ffmpeg',
                 self.output_path + '/preview.mp4',
                 '-i', 'frame_%04d.jpg'
                 ] + self.ffmpeg_args, cwd=self.preview_path)
+        else:
+            subprocess.run([
+                'ffmpeg',
+                self.output_path + '/preview.mp4',
+                '-i', 'frame_%04d.jpg'
+                ], cwd=self.preview_path)
 
     def parse_images(self):
         self.blurring_lock = threading.Lock()
@@ -162,8 +164,12 @@ class ROS2BagParser:
             for t in image_export_threads:
                 t.join()
 
-            # zip images
-            shutil.make_archive(self.output_path + '/pictures', 'zip', self.blurred_path)
+            # zip images in a separate process
+            zipping_process = multiprocessing.Process(
+                    target=shutil.make_archive,
+                    args=(self.output_path + '/pictures', 'zip', self.blurred_path)
+                    )
+            zipping_process.start()
 
             # wait for copying to finish (image exports always precede)
             for t in copying_threads:
@@ -175,21 +181,28 @@ class ROS2BagParser:
             # wait for image exports to finish
             for t in image_export_threads:
                 t.join()
-            # zip images
-            shutil.make_archive(self.output_path + '/pictures', 'zip', self.image_path)
+            # zip images in a separate process
+            zipping_process = multiprocessing.Process(
+                    target=shutil.make_archive,
+                    args=(self.output_path + '/pictures', 'zip', self.image_path)
+                    )
+            zipping_process.start()
 
             # wait for all synced exports then preview then video (probably preceded by image exports)
             for p in synced_image_export_processes:
                 p.wait()
+
             # create preview video
             self.create_preview()
 
         if not self.keep:
+            zipping_process.join()
             # cleanup
             shutil.rmtree(self.image_path)
             shutil.rmtree(self.synced_path)
-            shutil.rmtree(self.blurred_path)
             shutil.rmtree(self.preview_path)
+            if self.blurred_path:
+                shutil.rmtree(self.blurred_path)
 
     def parse_misc(self):
         # extract misc topics
@@ -210,9 +223,17 @@ class ROS2BagParser:
             ])
 
         if not self.keep:
-            shutil.rmtree(self.misc_path + 'fix.csv')
+            os.remove(self.misc_path + '/fix.csv')
+
+    def zip_bag(self):
+        # zip original bag
+        with zipfile.ZipFile(self.output_path + '/bag.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(self.bag)
 
     def parse_ros2bag(self):
+        # start zipping original bag
+        multiprocessing.Process(target=self.zip_bag).start()
+
         # get topics
         info = rosbag2_py.Info()
         metadata = info.read_metadata(self.bag, 'sqlite3')
@@ -227,6 +248,7 @@ class ROS2BagParser:
         threading.Thread(target=self.parse_pointclouds).start()
         threading.Thread(target=self.parse_misc).start()
         self.parse_images()
+
 
 if __name__ == '__main__':
     # Parse command-line arguments
@@ -243,6 +265,9 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--keep-intermediary',
                         action='store_true',
                         help='Keep intermediary files')
+    parser.add_argument('-c', '--config',
+                        type=str,
+                        help='Path to the config file containing image topic names in the order their contents should appear in preview collages')
     parser.add_argument('-f', '--ffmpeg',
                         nargs=argparse.REMAINDER,
                         help='FFmpeg options for creating video output (without input and output options)')
@@ -258,5 +283,6 @@ if __name__ == '__main__':
                                os.path.realpath(args.output_dir),
                                args.blur,
                                args.keep_intermediary,
+                               args.config,
                                args.ffmpeg)
     bag_parser.parse_ros2bag()
