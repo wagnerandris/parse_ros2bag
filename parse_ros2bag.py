@@ -231,6 +231,9 @@ class ROS2BagParser:
             zipf.write(self.bag)
 
     def parse_ros2bag(self):
+        # make output dir
+        os.makedirs(self.output_path, exist_ok=True)
+
         # start zipping original bag
         multiprocessing.Process(target=self.zip_bag).start()
 
