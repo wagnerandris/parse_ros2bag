@@ -1,0 +1,8 @@
+TODO: git pull request for action messages
+
+
+TODO: add to readme: sudo apt install ros-humble-ament-cmake*
+needs to be sourced: source /opt/ros/humble/setup.bash
+somehow skip the build for test_msgs.. it will throw an error, and it is not needed
+GCC13 is NOT needed
+source source_deps.bash AFTER colcon build and venv
