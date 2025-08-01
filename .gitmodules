@@ -20,3 +20,6 @@
 [submodule "create_preveiw"]
 	path = create_preview
 	url = https://github.com/wagnerandris/create_preview.git
+[submodule "src/rcl_interfaces"]
+	path = src/rcl_interfaces
+	url = https://github.com/ros2/rcl_interfaces.git
