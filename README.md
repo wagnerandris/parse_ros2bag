@@ -15,6 +15,7 @@ A python script to parse a ROS2 bag's content into separate image, video, pointc
 3. Source your main ROS2 underlay with `source /opt/ros/humble/setup.bash`
 4. Build the required and included ROS2 packages with colcon
 	- Run `colcon build --symlink install`
+	- _colcon build will probably fail on the package_ `test_msgs` _which is included in_ `rcl_interfaces`_. You can skip this package, as long as all the others are built._
 5. Create a python virtual environment to handle pip dependencies (optional, but highly recommended)
 	- `python -m venv venv`
 6. Source the built ROS2 packages and python virtual environment by using the provided source script. Run `source source_deps.bash`
