@@ -1,8 +1,13 @@
 # UNTESTED DEVELOPMENT FORK!
+## TODO:
+- Right now the misc topics are not exported, so the .kml conversion also fails.
+- While running it throws a LOT of errors and warnings, but works :D
 # parse_ros2bag
 A python script to parse a ROS2 bag's content into separate image, video, pointcloud and csv files.
 
 # Prerequisites/Dependencies
+- The video generation needs FFMPEG to be installed.
+	- You probabaly already have it installed, but if not, the install it by running: `sudo apt install ffmpeg`
 - You must have ROS2 humble installed and configured on your system, with the default underlay sourced.
 	- Either run `source /opt/ros/humble/setup.bash` or add the same to the end of your `.bashrc` file.
 - ROS2's ament and cmake system must be installed first, system-wide.
