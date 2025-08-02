@@ -1,6 +1,10 @@
 # UNTESTED DEVELOPMENT FORK!
 ## TODO:
-- Right now the misc topics are not exported, so the .kml conversion also fails.
+- fix misc topics
+	- Right now the misc topics are not exported, so the .kml conversion also fails.
+- bag.zip's content is really weird, contains the full absolute path to the bagfile. Fix this!
+- pointcloud.zip should contain only the pointclouds, no subfolder, also rename to pointclouds.zip
+## Notes:
 - While running it throws a LOT of errors and warnings, but works :D
 # parse_ros2bag
 A python script to parse a ROS2 bag's content into separate image, video, pointcloud and csv files.
