@@ -103,6 +103,7 @@ pillow
 psutil
 py-cpuinfo
 pyparsing
+pyproj
 python-dateutil
 python_qt_binding
 pytz
