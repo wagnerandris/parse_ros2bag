@@ -3,7 +3,8 @@
 A python script to parse a ROS2 bag's content into separate image, video, pointcloud and csv files.
 
 # Prerequisites/Dependencies
-- You must have ROS2 humble installed and configured on your system, with the default underlay sourced. `source /opt/ros/humble/setup.bash`.
+- You must have ROS2 humble installed and configured on your system, with the default underlay sourced.
+	- Either run `source /opt/ros/humble/setup.bash` or add the same to the end of your `.bashrc` file.
 - ROS2's ament and cmake system must be installed first, system-wide.
 	-run `sudo apt install ros-humble-ament-cmake*`
 - The package uses ros2-humble with packages included as submodules under `src` and other submodules in the main directory, as well as python package dependencies listed in `requirements.txt`.
