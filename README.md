@@ -3,7 +3,7 @@
 A python script to parse a ROS2 bag's content into separate image, video, pointcloud and csv files.
 
 # Prerequisites/Dependencies
-- You must have ROS2 humble installed and configured on your system.
+- You must have ROS2 humble installed and configured on your system, with the default underlay sourced. `source /opt/ros/humble/setup.bash`.
 - ROS2's ament and cmake system must be installed first, system-wide.
 	-run `sudo apt install ros-humble-ament-cmake*`
 - The package uses ros2-humble with packages included as submodules under `src` and other submodules in the main directory, as well as python package dependencies listed in `requirements.txt`.
@@ -14,6 +14,7 @@ A python script to parse a ROS2 bag's content into separate image, video, pointc
 1. Clone this repo, with the submodules `git clone --recurse-submodules`
 2. `cd parse_ros2bag`
 3. Source your main ROS2 underlay with `source /opt/ros/humble/setup.bash`
+	- _this step is rendundant, but whatewer_
 4. Build the required and included ROS2 packages with colcon
 	- Run `colcon build --symlink install`
 	- _colcon build will probably fail on the package_ `test_msgs` _which is included in_ `rcl_interfaces`_. You can skip this package, as long as all the others are built._
