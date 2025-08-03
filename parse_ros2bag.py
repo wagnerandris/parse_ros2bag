@@ -232,6 +232,9 @@ class ROS2BagParser:
 
     def parse_ros2bag(self):
         # make output dir
+        if os.path.isdir(self.output_path) and os.listdir(self.output_path):
+            print('Error: output path is a non-empty folder.')
+            exit()
         os.makedirs(self.output_path, exist_ok=True)
 
         # start zipping original bag
@@ -273,12 +276,11 @@ if __name__ == '__main__':
                         help='Path to the config file containing image topic names in the order their contents should appear in preview collages')
     parser.add_argument('-f', '--ffmpeg',
                         nargs=argparse.REMAINDER,
-                        help='FFmpeg options for creating video output (without input and output options)')
+                        help='FFmpeg options for creating video output (without input and output options) note: this option has to come last as everything after gets passed to ffmpeg')
 
     args = parser.parse_args()
 
     # TODO verbose/silent
-    # TODO checks
 
     args = parser.parse_args()
 
