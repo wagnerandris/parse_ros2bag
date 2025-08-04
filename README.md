@@ -1,8 +1,5 @@
-# UNTESTED DEVELOPMENT FORK!
 ## TODO:
-- ~~**Fix misc topics**~~
-	- ~~Right now the misc topics are not exported, so the .kml conversion also fails.~~
-	- As it turns out ros2bag-convert needs to be installed system-wide, not in the venv
+- As it turns out ros2bag-convert needs to be installed system-wide, not in the venv
 - try to fix parallelization errors with the blurring submodule.
 	- Right now it seems to run in paralel, but not always, which is weird
 - Bag.zip's content is really weird, contains the full absolute path to the bagfile. Fix this!
@@ -32,14 +29,13 @@ A python script to parse a ROS2 bag's content into separate image, video, pointc
 0. Have a working ROS2 Humble install, described in prerequisites.
 1. Clone this repo, with the submodules `git clone --recurse-submodules`
 2. `cd parse_ros2bag`
-3. Source your main ROS2 underlay with `source /opt/ros/humble/setup.bash`
-	- _this step is rendundant, but whatewer_
+3. Source your main ROS2 underlay with `source /opt/ros/humble/setup.bash` (if not done already)
 4. Build the required and included ROS2 packages with colcon. Because colcon tries to build the packages in alphabetical order, ignoring possible conflicts, you need to manually pre-build some packages.
 	- Before any other package, build just rosbag2\_tools. Run `colcon build --symlink-install --packages-select rosbag2_tools`
 	- After `rosbag2_tools` was successfully built, you can build all the rest. Run `colcon build --symlink-install`.
 5. Create a python virtual environment to handle pip dependencies (optional, but highly recommended)
 	- `python -m venv venv`
-	- _if the creation of virtual environment fails, you brobably skipped a step in rerequisites_
+	- _if the creation of virtual environment fails, you probably skipped a step in prerequisites_
 6. Source the built ROS2 packages and python virtual environment by using the provided source script. Run `source source_deps.bash`
 7. Use pip to install the dependencies
 	- run `pip install -r requirements.txt`
