@@ -228,7 +228,7 @@ class ROS2BagParser:
     def zip_bag(self):
         # zip original bag
         with zipfile.ZipFile(self.output_path + '/bag.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
-            zipf.write(self.bag)
+            zipf.write(self.bag, arcname=os.path.basename(self.bag))
 
     def parse_ros2bag(self):
         # make output dir
@@ -263,7 +263,7 @@ if __name__ == '__main__':
                         type=str,
                         help='Path to input ROS2 bag')
     parser.add_argument('-o', '--output_dir',
-                        type=str, required=False, default='.',
+                        type=str, required=False, default='./convert',
                         help='Path to the output folder')
     parser.add_argument('-b', '--blur',
                         action='store_true',
@@ -272,13 +272,11 @@ if __name__ == '__main__':
                         action='store_true',
                         help='Keep intermediary files')
     parser.add_argument('-c', '--config',
-                        type=str,
+                        type=str, default='./topics.conf',
                         help='Path to the config file containing image topic names in the order their contents should appear in preview collages')
     parser.add_argument('-f', '--ffmpeg',
                         nargs=argparse.REMAINDER,
                         help='FFmpeg options for creating video output (without input and output options) note: this option has to come last as everything after gets passed to ffmpeg')
-
-    args = parser.parse_args()
 
     # TODO verbose/silent
 

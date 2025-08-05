@@ -2,13 +2,8 @@
 - As it turns out ros2bag-convert needs to be installed system-wide, not in the venv
 - try to fix parallelization errors with the blurring submodule.
 	- Right now it seems to run in paralel, but not always, which is weird
-- Bag.zip's content is really weird, contains the full absolute path to the bagfile. Fix this!
-- Pintcloud.zip should contain only the pointclouds, no subfolder, also rename to pointclouds.zip
-- Add default output dir as ./convert
-- Add default config file as ./folders.conf
 - Add logging -- something similar, as if running the current version with ` 2>&1 | tee output.txt` 
-- Probably it is a good idea to add some checks for running on existing folders, to avoid confusion
-- Add some example of FFMPEG options to the readme or help
+- config file option to configure create preview and ffmpeg (and the other options) together
 # parse_ros2bag
 A python script to parse a ROS2 bag's content into separate image, video, pointcloud and csv files.
 
@@ -40,7 +35,6 @@ A python script to parse a ROS2 bag's content into separate image, video, pointc
 7. Use pip to install the dependencies
 	- run `pip install -r requirements.txt`
 	- _This will install all the pip dependencies and a lot more... we should clean this up_
-	- ~~or run `pip install -r req_nover.txt` <- this is a versionless, stripped-down requirement list.~~
 8. **ALL DONE** Use the parser with the options provided in: `python parse_ros2bags.py -h`
 
 # Usage
