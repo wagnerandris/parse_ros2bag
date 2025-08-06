@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 
-import argparse
 import rosbag2_py
+
+import yaml
+import argparse
+
 import subprocess
 import threading
 import multiprocessing
+
 import os
 import shutil
 import zipfile
@@ -108,12 +112,13 @@ class ROS2BagParser:
 
         # create video
         if self.ffmpeg_args:
+            print(self.ffmpeg_args)
             # with additional args
             subprocess.run([
                 'ffmpeg',
-                self.output_path + '/preview.mp4',
                 '-i', 'frame_%04d.jpg'
-                ] + self.ffmpeg_args, cwd=self.preview_path)
+                ] + str.split(self.ffmpeg_args) +
+                [self.output_path + '/preview.mp4'], cwd=self.preview_path)
         else:
             subprocess.run([
                 'ffmpeg',
@@ -256,9 +261,52 @@ class ROS2BagParser:
         self.parse_images()
 
 
+VALID_CONFIG_OPTIONS = {
+        'output_dir': str,
+        'blur': bool,
+        'keep_intermediary': bool,
+        'preview_topics': list,
+        'preview_config': str,
+        'ffmpeg_options': str,
+        'ffmpeg_input_options': str,
+        'ffmpeg_output_options': str,
+}
+
+
+def load_config_file(config_path):
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f) or {}
+
+    # validate keys
+    invalid_keys = set(config) - VALID_CONFIG_OPTIONS.keys()
+    if invalid_keys:
+        raise ValueError(f"Invalid config keys: {', '.join(invalid_keys)}. "
+                         f"Valid keys are: {', '.join(sorted(VALID_CONFIG_OPTIONS.keys()))}")
+
+    # validate types
+    for key, expected_type in VALID_CONFIG_OPTIONS.items():
+        if key in config and not isinstance(config[key], expected_type):
+            raise TypeError(f"Invalid type for '{key}': expected {expected_type.__name__}, got {type(config[key]).__name__}")
+
+    return config
+
+
 if __name__ == '__main__':
-    # Parse command-line arguments
+    # parse command-line arguments
     parser = argparse.ArgumentParser(description='Automatically parse ROS2 bags into separate files and folders per device.')
+
+    # parse config file
+    parser.add_argument('-c', '--config',
+                        type=str, default='./config.yaml',
+                        help='Path to config file')
+    args_config, remaining_argv = parser.parse_known_args()
+
+    # load config file if it exists
+    config_options = {}
+    if os.path.exists(args_config.config):
+        config_options = load_config_file(args_config.config)
+
+    # parse remaining arguments
     parser.add_argument('input',
                         type=str,
                         help='Path to input ROS2 bag')
@@ -271,21 +319,23 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--keep-intermediary',
                         action='store_true',
                         help='Keep intermediary files')
-    parser.add_argument('-c', '--config',
+    parser.add_argument('-pc', '--preview_config',
                         type=str, default='./topics.conf',
                         help='Path to the config file containing image topic names in the order their contents should appear in preview collages')
-    parser.add_argument('-f', '--ffmpeg',
-                        nargs=argparse.REMAINDER,
-                        help='FFmpeg options for creating video output (without input and output options) note: this option has to come last as everything after gets passed to ffmpeg')
+
+    # override defaults with config file options
+    parser.set_defaults(**config_options)
 
     # TODO verbose/silent
 
     args = parser.parse_args()
 
+    # TODO other ffmpeg options
+    # TODO preview config vs list
     bag_parser = ROS2BagParser(args.input,
                                os.path.realpath(args.output_dir),
                                args.blur,
                                args.keep_intermediary,
-                               args.config,
-                               args.ffmpeg)
+                               args.preview_config,
+                               args.ffmpeg_output_options if args.__contains__('ffmpeg_output_options') else None)
     bag_parser.parse_ros2bag()

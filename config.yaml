@@ -1,0 +1,11 @@
+output_dir: 'convert'
+blur: true
+keep_intermediary: false
+preview_topics:
+  - image_1_
+  - image_2_
+  - image_0_
+  - image_5_
+  - image_3_
+  - image_4_
+ffmpeg_output_options: '-framerate 12'
