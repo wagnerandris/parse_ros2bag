@@ -30,9 +30,17 @@ class ROS2BagParser:
             'std_msgs/msg/Int32': misc_topic_names,
             }
 
-    def __init__(self, bag, output_path, blur, keep, config, ffmpeg_args):
+    def __init__(self,
+                 bag,
+                 output_path,
+                 blur,
+                 keep,
+                 preview_topics, preview_cols, preview_rows,
+                 ffmpeg_options, ffmpeg_input_options, ffmpeg_output_options,
+                 logfile):
         self.script_path = os.path.dirname(os.path.realpath(__file__))
         self.bag = bag
+
         self.output_path = output_path
         self.image_path = os.path.join(output_path, 'images')
         self.synced_path = os.path.join(output_path, 'synced_topics')
@@ -40,9 +48,25 @@ class ROS2BagParser:
         self.preview_path = os.path.join(output_path, 'previews')
         self.pointcloud_path = os.path.join(output_path, 'pointclouds')
         self.misc_path = os.path.join(output_path, 'misc_topics')
+
         self.keep = keep
-        self.config = os.path.realpath(config)
-        self.ffmpeg_args = ffmpeg_args
+
+        self.preview_topics = preview_topics
+        self.preview_cols = preview_cols
+        self.preview_rows = preview_rows
+
+        self.ffmpeg_options = ffmpeg_options
+        self.ffmpeg_input_options = ffmpeg_input_options
+        self.ffmpeg_output_options = ffmpeg_output_options
+
+        print([
+            "ffmpeg",
+            *self.ffmpeg_options.split(),
+            *self.ffmpeg_input_options.split(),
+            "-i", "frame_%04d.jpg",
+            *self.ffmpeg_output_options.split(),
+            f"{self.output_path}/preview.mp4"])
+        exit()
 
     def parse_pointclouds(self):
         # export pointclouds
@@ -104,27 +128,24 @@ class ROS2BagParser:
 
     def create_preview(self):
         # unite images
+        # TODO
         subprocess.run([
             'python3', self.script_path + '/create_preview/create_preview.py',
-            '-c', self.config,
-            '-o', self.preview_path
+            '-o', self.preview_path,
+            '-c', str(self.preview_cols),
+            '-r', str(self.preview_rows),
+            '-t', *self.preview_topics,
             ], cwd=self.synced_path)
 
         # create video
-        if self.ffmpeg_args:
-            print(self.ffmpeg_args)
-            # with additional args
-            subprocess.run([
-                'ffmpeg',
-                '-i', 'frame_%04d.jpg'
-                ] + str.split(self.ffmpeg_args) +
-                [self.output_path + '/preview.mp4'], cwd=self.preview_path)
-        else:
-            subprocess.run([
-                'ffmpeg',
-                self.output_path + '/preview.mp4',
-                '-i', 'frame_%04d.jpg'
-                ], cwd=self.preview_path)
+        subprocess.run([
+            "ffmpeg",
+            *self.ffmpeg_options.split(),
+            *self.ffmpeg_input_options.split(),
+            "-i", "frame_%04.jpg",
+            *self.ffmpeg_output_options.split(),
+            f"{self.output_path}/preview.mp4"
+            ], cwd=self.preview_path)
 
     def parse_images(self):
         self.blurring_lock = threading.Lock()
@@ -261,19 +282,21 @@ class ROS2BagParser:
         self.parse_images()
 
 
-VALID_CONFIG_OPTIONS = {
-        'output_dir': str,
-        'blur': bool,
-        'keep_intermediary': bool,
-        'preview_topics': list,
-        'preview_config': str,
-        'ffmpeg_options': str,
-        'ffmpeg_input_options': str,
-        'ffmpeg_output_options': str,
-}
-
-
 def load_config_file(config_path):
+    VALID_CONFIG_OPTIONS = {
+            'output_dir': str,
+            'blur': bool,
+            'keep_intermediary': bool,
+            'preview_topics': list,
+            'preview_cols': int,
+            'preview_rows': int,
+            'preview_config': str,
+            'ffmpeg_options': str,
+            'ffmpeg_input_options': str,
+            'ffmpeg_output_options': str,
+            'logfile': str,
+    }
+
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f) or {}
 
@@ -319,9 +342,9 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--keep-intermediary',
                         action='store_true',
                         help='Keep intermediary files')
-    parser.add_argument('-pc', '--preview_config',
-                        type=str, default='./topics.conf',
-                        help='Path to the config file containing image topic names in the order their contents should appear in preview collages')
+    parser.add_argument('-l', '--logfile',
+                        type=str,
+                        help='Path to log file')
 
     # override defaults with config file options
     parser.set_defaults(**config_options)
@@ -330,12 +353,18 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # TODO other ffmpeg options
-    # TODO preview config vs list
+    print(args)
+
     bag_parser = ROS2BagParser(args.input,
                                os.path.realpath(args.output_dir),
                                args.blur,
                                args.keep_intermediary,
-                               args.preview_config,
-                               args.ffmpeg_output_options if args.__contains__('ffmpeg_output_options') else None)
+                               getattr(args, 'preview_topics', None),
+                               getattr(args, 'preview_cols', None),
+                               getattr(args, 'preview_rows', None),
+                               getattr(args, 'ffmpeg_options', ''),
+                               getattr(args, 'ffmpeg_input_options', ''),
+                               getattr(args, 'ffmpeg_output_options', ''),
+                               args.logfile
+                               )
     bag_parser.parse_ros2bag()

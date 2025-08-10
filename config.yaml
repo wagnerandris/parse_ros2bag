@@ -8,4 +8,6 @@ preview_topics:
   - image_5_
   - image_3_
   - image_4_
+preview_cols: 2
+preview_rows: 3
 ffmpeg_output_options: '-framerate 12'
