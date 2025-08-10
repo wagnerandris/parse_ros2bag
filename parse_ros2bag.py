@@ -35,7 +35,7 @@ class ROS2BagParser:
                  output_path,
                  blur,
                  keep,
-                 preview_topics, preview_cols, preview_rows,
+                 preview_config, preview_topics, preview_cols, preview_rows, preview_image_width, preview_image_height,
                  ffmpeg_options, ffmpeg_input_options, ffmpeg_output_options,
                  logfile):
         self.script_path = os.path.dirname(os.path.realpath(__file__))
@@ -51,22 +51,16 @@ class ROS2BagParser:
 
         self.keep = keep
 
+        self.preview_config = preview_config
         self.preview_topics = preview_topics
         self.preview_cols = preview_cols
         self.preview_rows = preview_rows
+        self.preview_image_width = preview_image_width
+        self.preview_image_height = preview_image_height
 
         self.ffmpeg_options = ffmpeg_options
         self.ffmpeg_input_options = ffmpeg_input_options
         self.ffmpeg_output_options = ffmpeg_output_options
-
-        print([
-            "ffmpeg",
-            *self.ffmpeg_options.split(),
-            *self.ffmpeg_input_options.split(),
-            "-i", "frame_%04d.jpg",
-            *self.ffmpeg_output_options.split(),
-            f"{self.output_path}/preview.mp4"])
-        exit()
 
     def parse_pointclouds(self):
         # export pointclouds
@@ -127,22 +121,31 @@ class ROS2BagParser:
                         self.synced_path + topic)
 
     def create_preview(self):
+        if not self.preview_topics:
+            print('No preview topics provided, skipping step')
+            return
+
         # unite images
-        # TODO
-        subprocess.run([
-            'python3', self.script_path + '/create_preview/create_preview.py',
-            '-o', self.preview_path,
-            '-c', str(self.preview_cols),
-            '-r', str(self.preview_rows),
-            '-t', *self.preview_topics,
-            ], cwd=self.synced_path)
+        cmd = ['python3', self.script_path + '/create_preview/create_preview.py', '-o', self.preview_path]
+        if self.preview_config:
+            cmd.append(f'--config {self.preview_config}')
+        if self.preview_cols:
+            cmd.append(f'-c {str(self.preview_cols)}')
+        if self.preview_rows:
+            cmd.append(f'-r {str(self.preview_rows)}')
+        if self.preview_image_width:
+            cmd.append(f'-iw {str(self.preview_image_width)}')
+        if self.preview_image_height:
+            cmd.append(f'-ih {str(self.preview_image_height)}')
+        cmd += ['-t', *self.preview_topics]
+        subprocess.run(cmd, cwd=self.synced_path)
 
         # create video
         subprocess.run([
             "ffmpeg",
             *self.ffmpeg_options.split(),
             *self.ffmpeg_input_options.split(),
-            "-i", "frame_%04.jpg",
+            "-i", "frame_%04d.jpg",
             *self.ffmpeg_output_options.split(),
             f"{self.output_path}/preview.mp4"
             ], cwd=self.preview_path)
@@ -290,6 +293,8 @@ def load_config_file(config_path):
             'preview_topics': list,
             'preview_cols': int,
             'preview_rows': int,
+            'preview_image_width': int,
+            'preview_image_height': int,
             'preview_config': str,
             'ffmpeg_options': str,
             'ffmpeg_input_options': str,
@@ -359,9 +364,12 @@ if __name__ == '__main__':
                                os.path.realpath(args.output_dir),
                                args.blur,
                                args.keep_intermediary,
+                               getattr(args, 'preview_config', None),
                                getattr(args, 'preview_topics', None),
                                getattr(args, 'preview_cols', None),
                                getattr(args, 'preview_rows', None),
+                               getattr(args, 'preview_image_width', None),
+                               getattr(args, 'preview_image_height', None),
                                getattr(args, 'ffmpeg_options', ''),
                                getattr(args, 'ffmpeg_input_options', ''),
                                getattr(args, 'ffmpeg_output_options', ''),
