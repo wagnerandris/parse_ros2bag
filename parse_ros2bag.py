@@ -9,6 +9,8 @@ import subprocess
 import threading
 import multiprocessing
 
+import torch
+
 import os
 import shutil
 import zipfile
@@ -94,14 +96,12 @@ class ROS2BagParser:
             ])
 
         if self.blurred_path:
-            # only one thread can run the blurring script at a time
-            with self.blurring_lock:
-                subprocess.run([
-                    'python3', 'licenseplate_test.py',
-                    '-i', self.image_path + image_topic_name,
-                    '-o', self.blurred_path + image_topic_name,
-                    ],
-                    cwd=self.script_path + '/person_and_licenceplate_blurring')
+            subprocess.run([
+                'python3', 'licenseplate_test.py',
+                '-i', self.image_path + image_topic_name,
+                '-o', self.blurred_path + image_topic_name,
+                ],
+                cwd=self.script_path + '/person_and_licenceplate_blurring')
 
     def copy_blurred(self, thread, proc, topic):
         # wait for blur thread
@@ -151,7 +151,8 @@ class ROS2BagParser:
             ], cwd=self.preview_path)
 
     def parse_images(self):
-        self.blurring_lock = threading.Lock()
+        if self.blurred_path:
+            torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True, force_reload=True)
 
         # export (and blur) images
         image_export_threads = []
