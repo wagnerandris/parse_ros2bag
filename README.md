@@ -1,7 +1,4 @@
 ## TODO:
-- As it turns out ros2bag-convert needs to be installed system-wide, not in the venv
-- try to fix parallelization errors with the blurring submodule.
-	- Right now it seems to run in paralel, but not always, which is weird
 - Add logging -- something similar, as if running the current version with ` 2>&1 | tee output.txt`
 # parse_ros2bag
 A python script to parse a ROS2 bags content into separate image, video, pointcloud and csv files.
@@ -28,6 +25,7 @@ A python script to parse a ROS2 bags content into separate image, video, pointcl
 	- Before any other package, build just rosbag2\_tools. Run `colcon build --symlink-install --packages-select rosbag2_tools`
 	- After `rosbag2_tools` was successfully built, you can build all the rest. Run `colcon build --symlink-install`.
 5. Create a python virtual environment to handle pip dependencies (optional, but highly recommended)
+   	- On Ubuntu, ros2bag-convert needs to be installed system-wide, not in the venv
 	- `python -m venv venv`
 	- _if the creation of virtual environment fails, you probably skipped a step in prerequisites_
 6. Source the built ROS2 packages and python virtual environment by using the provided source script. Run `source source_deps.bash`
