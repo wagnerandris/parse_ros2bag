@@ -10,4 +10,4 @@ preview_topics:
   - image_4_
 preview_cols: 2
 preview_rows: 3
-ffmpeg_output_options: '-framerate 12'
+ffmpeg_input_options: '-framerate 12'

@@ -254,6 +254,8 @@ class ROS2BagParser:
 
         if not self.keep:
             os.remove(self.misc_path + '/fix.csv')
+            os.remove(self.misc_path + '/metadata.yaml')
+            os.remove(self.misc_path + '/misc_topics_0.db3')
 
     def zip_bag(self):
         # zip original bag
@@ -328,14 +330,6 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--config',
                         type=str, default='./config.yaml',
                         help='Path to config file')
-    args_config, remaining_argv = parser.parse_known_args()
-
-    # load config file if it exists
-    config_options = {}
-    if os.path.exists(args_config.config):
-        config_options = load_config_file(args_config.config)
-
-    # parse remaining arguments
     parser.add_argument('input',
                         type=str,
                         help='Path to input ROS2 bag')
@@ -345,12 +339,32 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--blur',
                         action='store_true',
                         help='Blur faces and license plates')
-    parser.add_argument('-k', '--keep-intermediary',
+    parser.add_argument('-nb', '--no-blur',
+                        dest='blur',
+                        action='store_false',
+                        help='Do not blur faces and license plates')
+    parser.add_argument('-k', '--keep_intermediary',
                         action='store_true',
+                        dest='keep_intermediary',
                         help='Keep intermediary files')
+    parser.add_argument('-nk', '--no_keep_intermediary',
+                        dest='keep_intermediary',
+                        action='store_false',
+                        help='Do not keep intermediary files')
+    parser.add_argument('-pc', '--preview_config',
+                        type=str,
+                        help='Path to config file for create_preview.py')
     parser.add_argument('-l', '--logfile',
                         type=str,
                         help='Path to log file')
+    args_config, remaining_argv = parser.parse_known_args()
+
+    # load config file if it exists
+    config_options = {}
+    if os.path.exists(args_config.config):
+        config_options = load_config_file(args_config.config)
+
+    # parse remaining arguments
 
     # override defaults with config file options
     parser.set_defaults(**config_options)
