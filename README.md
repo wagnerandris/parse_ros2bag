@@ -30,7 +30,7 @@ A python script to parse a ROS2 bags content into separate image, video, pointcl
   ```
   sudo pip install git+https://github.com/fishros/ros2bag_convert.git
   ```
-- python3 on Ubuntu does not install the required packages for virtual environments automatically, so you will need to install it with
+- python on Ubuntu does not install the required packages for virtual environments automatically, so you will need to install it with
   ```
   sudo apt install python3.10-venv
   ```
@@ -65,7 +65,7 @@ A python script to parse a ROS2 bags content into separate image, video, pointcl
    	- On Ubuntu, ros2bag-convert needs to be installed system-wide, not in the venv as shown in prerequisites
    	- Create venv
     ```
-   	python -m venv venv
+   	python3 -m venv venv
     ```
 	- _if the creation of virtual environment fails, you probably skipped a step in prerequisites_
 10. Source the built ROS2 packages and python virtual environment by using the provided source script. Run
@@ -79,7 +79,7 @@ A python script to parse a ROS2 bags content into separate image, video, pointcl
  	```
 13. **ALL DONE** Use the parser with the options provided in:
     ```
-    python parse_ros2bags.py -h
+    python3 parse_ros2bags.py -h
     ```
 
 # Usage
@@ -90,7 +90,7 @@ source source_deps.bash
 
 With the workspace and environment activated the script can be run with possible options described by
 ```
-python parse_ros2bag -h
+python3 parse_ros2bag -h
 ```
 
 The following options can be specified in a yaml config file (given in the option `-c`):
