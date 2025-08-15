@@ -11,9 +11,49 @@ import multiprocessing
 
 import torch
 
+import sys
 import os
 import shutil
 import zipfile
+
+import logging
+
+
+def log_stream(stream, prefix):
+    for line in iter(stream.readline, ''):
+        # Skip spinner/progress-style lines (heuristic)
+        if line.strip() == '' or line.endswith('\r') or len(line.strip()) < 3:
+            continue
+        logger.info(f"[{prefix}] {line.strip()}")
+    stream.close()
+
+
+def run_logged_subprocess(cmd, cwd='.', logger=None):
+    if not logger:
+        subprocess.run(cmd, cwd=cwd)
+
+    else:
+        process = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Start threads to capture stdout and stderr
+        threading.Thread(target=log_stream, args=(process.stdout, "stdout"), daemon=True).start()
+        threading.Thread(target=log_stream, args=(process.stderr, "stderr"), daemon=True).start()
+
+        process.wait()
+
+
+def Popen_logged_subprocess(cmd, cwd='.', logger=None):
+    if not logger:
+        return subprocess.Popen(cmd, cwd=cwd)
+
+    else:
+        process = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Start threads to capture stdout and stderr
+        threading.Thread(target=log_stream, args=(process.stdout, "stdout"), daemon=True).start()
+        threading.Thread(target=log_stream, args=(process.stderr, "stderr"), daemon=True).start()
+
+        return process
 
 
 class ROS2BagParser:
@@ -39,7 +79,7 @@ class ROS2BagParser:
                  keep,
                  preview_config, preview_topics, preview_cols, preview_rows, preview_image_width, preview_image_height,
                  ffmpeg_options, ffmpeg_input_options, ffmpeg_output_options,
-                 logfile):
+                 logger):
         self.script_path = os.path.dirname(os.path.realpath(__file__))
         self.bag = bag
 
@@ -64,16 +104,19 @@ class ROS2BagParser:
         self.ffmpeg_input_options = ffmpeg_input_options
         self.ffmpeg_output_options = ffmpeg_output_options
 
+        self.logger = logger
+
     def parse_pointclouds(self):
         # export pointclouds
         pointcloud_export_processes = []
         for t in self.pointcloud_topic_names:
-            pointcloud_export_processes.append(subprocess.Popen([
+            pointcloud_export_processes.append(
+                Popen_logged_subprocess([
                 'ros2', 'bag', 'export',
                 '--in', self.bag,
                 '-t', t, 'pcd',
                 '--dir', self.pointcloud_path + t,
-                ]))
+                ], logger=self.logger))
 
         # wait for pointcloud exports to finish
         for p in pointcloud_export_processes:
@@ -88,20 +131,21 @@ class ROS2BagParser:
 
     def export_images(self, image_topic_name):
         # export images
-        subprocess.run([
+        run_logged_subprocess([
             'ros2', 'bag', 'export',
             '--in', self.bag,
             '-t', image_topic_name, 'image',
             '--dir', self.image_path + image_topic_name,
-            ])
+            ], logger=self.logger)
 
         if self.blurred_path:
-            subprocess.run([
+            run_logged_subprocess([
                 'python3', 'licenseplate_test.py',
                 '-i', self.image_path + image_topic_name,
                 '-o', self.blurred_path + image_topic_name,
                 ],
-                cwd=self.script_path + '/person_and_licenceplate_blurring')
+                cwd=self.script_path + '/person_and_licenceplate_blurring',
+                logger=self.logger)
 
     def copy_blurred(self, thread, proc, topic):
         # wait for blur thread
@@ -123,6 +167,8 @@ class ROS2BagParser:
     def create_preview(self):
         if not self.preview_topics:
             print('No preview topics provided, skipping step')
+            if self.logger:
+                self.logger.info('No preview topics provided, skipping step')
             return
 
         # unite images
@@ -138,17 +184,20 @@ class ROS2BagParser:
         if self.preview_image_height:
             cmd.append(f'-ih {str(self.preview_image_height)}')
         cmd += ['-t', *self.preview_topics]
-        subprocess.run(cmd, cwd=self.synced_path)
+        run_logged_subprocess(cmd, cwd=self.synced_path, logger=self.logger)
 
         # create video
-        subprocess.run([
+        if self.logger:
+            self.logger.info('Creating video with {cmd}')
+        cmd = [
             "ffmpeg",
             *self.ffmpeg_options.split(),
             *self.ffmpeg_input_options.split(),
             "-i", "frame_%04d.jpg",
             *self.ffmpeg_output_options.split(),
             f"{self.output_path}/preview.mp4"
-            ], cwd=self.preview_path)
+            ]
+        subprocess.run(cmd, cwd=self.preview_path) # not logged because it has such a stupid refreshing line
 
     def parse_images(self):
         if self.blurred_path:
@@ -161,22 +210,22 @@ class ROS2BagParser:
             image_export_threads[-1].start()
 
         # syncronize
-        subprocess.run([
+        run_logged_subprocess([
             'ros2', 'bag', 'sync',
             self.bag,
             '-t', *self.image_topic_names,
             '-o', self.synced_path
-            ])
+            ], logger=self.logger)
 
         # export synced images
         synced_image_export_processes = []
         for t in self.image_topic_names:
-            synced_image_export_processes.append(subprocess.Popen([
+            synced_image_export_processes.append(Popen_logged_subprocess([
                 'ros2', 'bag', 'export',
                 '--in', self.synced_path + '/synced_topics_0.db3',
                 '-t', t, 'image',
                 '--dir', self.synced_path + t,
-                ]))
+                ], logger=self.logger))
 
         # if blurring is needed
         if self.blurred_path:
@@ -230,27 +279,27 @@ class ROS2BagParser:
             # cleanup
             shutil.rmtree(self.image_path)
             shutil.rmtree(self.synced_path)
-            shutil.rmtree(self.preview_path)
             if self.blurred_path:
                 shutil.rmtree(self.blurred_path)
+            shutil.rmtree(self.preview_path)
 
     def parse_misc(self):
         # extract misc topics
-        subprocess.run([
+        run_logged_subprocess([
             'ros2', 'bag', 'extract',
             self.bag,
             '-t', *self.misc_topic_names,
             '-o', self.misc_path
-            ])
+            ], logger=self.logger)
 
         # convert to csv
-        subprocess.run(['ros2bag-convert', self.misc_path + '/misc_topics_0.db3'])
+        run_logged_subprocess(['ros2bag-convert', self.misc_path + '/misc_topics_0.db3'], logger=self.logger)
 
         # convert to kml
-        subprocess.run([
+        run_logged_subprocess([
             'python3', self.script_path + '/ros2-csv-kml_converter/csv-to-kml.py',
             self.misc_path
-            ])
+            ], logger=self.logger)
 
         if not self.keep:
             os.remove(self.misc_path + '/fix.csv')
@@ -319,6 +368,9 @@ def load_config_file(config_path):
         if key in config and not isinstance(config[key], expected_type):
             raise TypeError(f"Invalid type for '{key}': expected {expected_type.__name__}, got {type(config[key]).__name__}")
 
+    if config == {}:
+        print(f'\033[1;33mWarning:\033[0m No options could be loaded from {config_path}', file=sys.stderr)
+
     return config
 
 
@@ -361,19 +413,37 @@ if __name__ == '__main__':
 
     # load config file if it exists
     config_options = {}
-    if os.path.exists(args_config.config):
+    if os.path.isfile(args_config.config):
         config_options = load_config_file(args_config.config)
+    else:
+        print(f'\033[1;33mWarning:\033[0m Cannot read config from {args_config.config}: no such file', file=sys.stderr)
 
     # parse remaining arguments
 
     # override defaults with config file options
     parser.set_defaults(**config_options)
 
-    # TODO verbose/silent
-
     args = parser.parse_args()
 
-    print(args)
+    print(f'Parsed args: {args}')
+
+    if args.logfile:
+        # Configure logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s',
+            handlers=[
+                logging.FileHandler(args.logfile),
+                #logging.StreamHandler()
+            ]
+        )
+
+        logger = logging.getLogger(__name__)
+        logger.info(f'Parsed args: {args}')
+        print(f'Starting parser... find more detailed logs in {args.logfile}')
+    else:
+        logger = None
+        print('Starting parser...')
 
     bag_parser = ROS2BagParser(args.input,
                                os.path.realpath(args.output_dir),
@@ -388,6 +458,6 @@ if __name__ == '__main__':
                                getattr(args, 'ffmpeg_options', ''),
                                getattr(args, 'ffmpeg_input_options', ''),
                                getattr(args, 'ffmpeg_output_options', ''),
-                               args.logfile
+                               logger
                                )
     bag_parser.parse_ros2bag()
