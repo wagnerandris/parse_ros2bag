@@ -77,6 +77,8 @@ class ROS2BagParser:
                  output_path,
                  blur,
                  keep,
+                 sync,
+                 topic_blacklist,
                  preview_config, preview_topics, preview_cols, preview_rows, preview_image_width, preview_image_height,
                  ffmpeg_options, ffmpeg_input_options, ffmpeg_output_options,
                  logger):
@@ -92,6 +94,8 @@ class ROS2BagParser:
         self.misc_path = os.path.join(output_path, 'misc_topics')
 
         self.keep = keep
+        self.sync = sync
+        self.topic_blacklist = ['/' + t for t in topic_blacklist] # topics begint with / for some reason
 
         self.preview_config = preview_config
         self.preview_topics = preview_topics
@@ -138,14 +142,16 @@ class ROS2BagParser:
             '--dir', self.image_path + image_topic_name,
             ], logger=self.logger)
 
-        if self.blurred_path:
-            run_logged_subprocess([
-                'python3', 'licenseplate_test.py',
-                '-i', self.image_path + image_topic_name,
-                '-o', self.blurred_path + image_topic_name,
-                ],
-                cwd=self.script_path + '/person_and_licenceplate_blurring',
-                logger=self.logger)
+    def export_and_blur_images(self, image_topic_name):
+        self.export_images(image_topic_name)
+
+        run_logged_subprocess([
+            'python3', 'licenseplate_test.py',
+            '-i', self.image_path + image_topic_name,
+            '-o', self.blurred_path + image_topic_name,
+            ],
+            cwd=self.script_path + '/person_and_licenceplate_blurring',
+            logger=self.logger)
 
     def copy_blurred(self, thread, proc, topic):
         # wait for blur thread
@@ -164,7 +170,7 @@ class ROS2BagParser:
                         '/' + os.path.splitext(f)[0] + '.jpg',
                         self.synced_path + topic)
 
-    def create_preview(self):
+    def create_preview(self, image_path):
         if not self.preview_topics:
             print('No preview topics provided, skipping step')
             if self.logger:
@@ -184,7 +190,7 @@ class ROS2BagParser:
         if self.preview_image_height:
             cmd.append(f'-ih {str(self.preview_image_height)}')
         cmd += ['-t', *self.preview_topics]
-        run_logged_subprocess(cmd, cwd=self.synced_path, logger=self.logger)
+        run_logged_subprocess(cmd, cwd=image_path, logger=self.logger)
 
         # create video
         if self.logger:
@@ -199,16 +205,11 @@ class ROS2BagParser:
             ]
         subprocess.run(cmd, cwd=self.preview_path) # not logged because it has such a stupid refreshing line
 
-    def parse_images(self):
-        if self.blurred_path:
-            torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True, force_reload=True)
+        # cleanup
+        if not self.keep:
+            shutil.rmtree(self.preview_path)
 
-        # export (and blur) images
-        image_export_threads = []
-        for t in self.image_topic_names:
-            image_export_threads.append(threading.Thread(target=self.export_images, args=(t,)))
-            image_export_threads[-1].start()
-
+    def sync_and_export_images(self):
         # syncronize
         run_logged_subprocess([
             'ros2', 'bag', 'sync',
@@ -227,61 +228,106 @@ class ROS2BagParser:
                 '--dir', self.synced_path + t,
                 ], logger=self.logger))
 
-        # if blurring is needed
+        # return processes so they can be waited on
+        return synced_image_export_processes
+
+    def zip_images(self, image_export_threads, image_path):
+        # wait for image exports to finish
+        for t in image_export_threads:
+            t.join()
+
+        # zip images in a separate process
+        zipping_process = multiprocessing.Process(
+                target=shutil.make_archive,
+                args=(self.output_path + '/pictures', 'zip', image_path)
+                )
+        zipping_process.start()
+        zipping_process.join()
+
+    def parse_images(self):
+        # with blurring
         if self.blurred_path:
-            copying_threads = []
-            # for each topic
-            for thread, proc, topic in zip(image_export_threads,
-                                           synced_image_export_processes,
-                                           self.image_topic_names):
-                # on a new thread wait for the corresponding synced and blurred images,
-                # then replace the synced ones with the corresponding blurred ones
-                copying_threads.append(threading.Thread(target=self.copy_blurred, args=(thread, proc, topic)))
-                copying_threads[-1].start()
+            # get blurring model
+            torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True, force_reload=True)
 
-            # wait for image exports to finish
-            for t in image_export_threads:
-                t.join()
+            # export and blur images
+            image_export_threads = []
+            for t in self.image_topic_names:
+                image_export_threads.append(threading.Thread(target=self.export_and_blur_images, args=(t,)))
+                image_export_threads[-1].start()
 
-            # zip images in a separate process
-            zipping_process = multiprocessing.Process(
-                    target=shutil.make_archive,
-                    args=(self.output_path + '/pictures', 'zip', self.blurred_path)
-                    )
-            zipping_process.start()
+            # zip images
+            zipping_thread = threading.Thread(
+                    target=self.zip_images, args=(image_export_threads, self.blurred_path))
+            zipping_thread.start()
 
-            # wait for copying to finish (image exports always precede)
-            for t in copying_threads:
-                t.join()
-            # create preview video
-            self.create_preview()
+            # sync if needed
+            if self.sync:
+                synced_image_export_processes = self.sync_and_export_images()
 
+                # copy blurred versions into synced images
+                copying_threads = []
+                # for each topic we'll have to wait for all previous exports
+                for thread, proc, topic in zip(image_export_threads,
+                                               synced_image_export_processes,
+                                               self.image_topic_names):
+                    copying_threads.append(threading.Thread(
+                        target=self.copy_blurred, args=(thread, proc, topic)))
+                    copying_threads[-1].start()
+
+                # create preview video
+                # wait for copying to finish
+                for t in copying_threads:
+                    t.join()
+                self.create_preview(self.synced_path)
+
+            else:
+                # wait for export and blur to finish
+                for t in image_export_threads:
+                    t.join()
+                # create preview video
+                self.create_preview(self.blurred_path)
+
+        # without blurring
         else:
-            # wait for image exports to finish
-            for t in image_export_threads:
-                t.join()
-            # zip images in a separate process
-            zipping_process = multiprocessing.Process(
-                    target=shutil.make_archive,
-                    args=(self.output_path + '/pictures', 'zip', self.image_path)
-                    )
-            zipping_process.start()
+            # export images
+            image_export_threads = []
+            for t in self.image_topic_names:
+                image_export_threads.append(threading.Thread(target=self.export_images, args=(t,)))
+                image_export_threads[-1].start()
 
-            # wait for all synced exports then preview then video (probably preceded by image exports)
-            for p in synced_image_export_processes:
-                p.wait()
+            # zip images
+            zipping_thread = threading.Thread(
+                    target=self.zip_images, args=(image_export_threads, self.image_path))
+            zipping_thread.start()
 
-            # create preview video
-            self.create_preview()
+            if self.sync:
+                synced_image_export_processes = self.sync_and_export_images()
 
+                # create preview video
+                # wait for all synced exports
+                for p in synced_image_export_processes:
+                    p.wait()
+                self.create_preview(self.synced_path)
+
+            else:
+                # wait for exports to finish
+                for t in image_export_threads:
+                    t.join()
+                # create preview video
+                self.create_preview(self.image_path)
+
+        # cleanup
         if not self.keep:
-            zipping_process.join()
-            # cleanup
+            zipping_thread.join()
+
             shutil.rmtree(self.image_path)
-            shutil.rmtree(self.synced_path)
+
+            if self.sync:
+                shutil.rmtree(self.synced_path)
+
             if self.blurred_path:
                 shutil.rmtree(self.blurred_path)
-            shutil.rmtree(self.preview_path)
 
     def parse_misc(self):
         # extract misc topics
@@ -295,11 +341,12 @@ class ROS2BagParser:
         # convert to csv
         run_logged_subprocess(['ros2bag-convert', self.misc_path + '/misc_topics_0.db3'], logger=self.logger)
 
-        # convert to kml
-        run_logged_subprocess([
-            'python3', self.script_path + '/ros2-csv-kml_converter/csv-to-kml.py',
-            self.misc_path
-            ], logger=self.logger)
+        if 'fix' in self.misc_topic_names:
+            # convert to kml
+            run_logged_subprocess([
+                'python3', self.script_path + '/ros2-csv-kml_converter/csv-to-kml.py',
+                self.misc_path
+                ], logger=self.logger)
 
         if not self.keep:
             os.remove(self.misc_path + '/fix.csv')
@@ -327,6 +374,9 @@ class ROS2BagParser:
 
         # separate topic types we care about into lists
         for t in metadata.topics_with_message_count:
+            if t.topic_metadata.name in self.topic_blacklist:
+                continue
+
             topic_names = self.topic_types.get(t.topic_metadata.type)
             if topic_names is not None:
                 topic_names.append(t.topic_metadata.name)
@@ -342,6 +392,8 @@ def load_config_file(config_path):
             'output_dir': str,
             'blur': bool,
             'keep_intermediary': bool,
+            'sync': bool,
+            'topic_blacklist': list,
             'preview_topics': list,
             'preview_cols': int,
             'preview_rows': int,
@@ -391,18 +443,24 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--blur',
                         action='store_true',
                         help='Blur faces and license plates')
-    parser.add_argument('-nb', '--no-blur',
+    parser.add_argument('-nb', '--no_blur',
                         dest='blur',
                         action='store_false',
                         help='Do not blur faces and license plates')
     parser.add_argument('-k', '--keep_intermediary',
                         action='store_true',
-                        dest='keep_intermediary',
                         help='Keep intermediary files')
     parser.add_argument('-nk', '--no_keep_intermediary',
                         dest='keep_intermediary',
                         action='store_false',
                         help='Do not keep intermediary files')
+    parser.add_argument('-s', '--sync',
+                        action='store_true', default=True,
+                        help='Sync images')
+    parser.add_argument('-ns', '--no_sync',
+                        dest='sync',
+                        action='store_false',
+                        help='Do not sync images')
     parser.add_argument('-pc', '--preview_config',
                         type=str,
                         help='Path to config file for create_preview.py')
@@ -434,7 +492,7 @@ if __name__ == '__main__':
             format='%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s',
             handlers=[
                 logging.FileHandler(args.logfile),
-                #logging.StreamHandler()
+                # logging.StreamHandler()
             ]
         )
 
@@ -449,6 +507,8 @@ if __name__ == '__main__':
                                os.path.realpath(args.output_dir),
                                args.blur,
                                args.keep_intermediary,
+                               args.sync,
+                               getattr(args, 'topic_blacklist', []),
                                getattr(args, 'preview_config', None),
                                getattr(args, 'preview_topics', None),
                                getattr(args, 'preview_cols', None),
