@@ -19,13 +19,19 @@ import zipfile
 import logging
 
 
-def log_stream(stream, prefix):
+def log_stream(stream, prefix, logger):
     for line in iter(stream.readline, ''):
         # Skip spinner/progress-style lines (heuristic)
         if line.strip() == '' or line.endswith('\r') or len(line.strip()) < 3:
             continue
         logger.info(f"[{prefix}] {line.strip()}")
     stream.close()
+
+
+def log_and_print(message, logger=None):
+    print(message)
+    if logger:
+        logger.info(message)
 
 
 def run_logged_subprocess(cmd, cwd='.', logger=None):
@@ -36,8 +42,8 @@ def run_logged_subprocess(cmd, cwd='.', logger=None):
         process = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
         # Start threads to capture stdout and stderr
-        threading.Thread(target=log_stream, args=(process.stdout, "stdout"), daemon=True).start()
-        threading.Thread(target=log_stream, args=(process.stderr, "stderr"), daemon=True).start()
+        threading.Thread(target=log_stream, args=(process.stdout, "stdout", logger), daemon=True).start()
+        threading.Thread(target=log_stream, args=(process.stderr, "stderr", logger), daemon=True).start()
 
         process.wait()
 
@@ -50,8 +56,8 @@ def Popen_logged_subprocess(cmd, cwd='.', logger=None):
         process = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
         # Start threads to capture stdout and stderr
-        threading.Thread(target=log_stream, args=(process.stdout, "stdout"), daemon=True).start()
-        threading.Thread(target=log_stream, args=(process.stderr, "stderr"), daemon=True).start()
+        threading.Thread(target=log_stream, args=(process.stdout, "stdout", logger), daemon=True).start()
+        threading.Thread(target=log_stream, args=(process.stderr, "stderr", logger), daemon=True).start()
 
         return process
 
@@ -111,27 +117,26 @@ class ROS2BagParser:
         self.logger = logger
 
     def parse_pointclouds(self):
+        log_and_print('Pointcloud parsing started', self.logger)
+        log_and_print('Exporting pointcoulds', self.logger)
         # export pointclouds
-        pointcloud_export_processes = []
         for t in self.pointcloud_topic_names:
-            pointcloud_export_processes.append(
-                Popen_logged_subprocess([
+                run_logged_subprocess([
                 'ros2', 'bag', 'export',
                 '--in', self.bag,
                 '-t', t, 'pcd',
                 '--dir', self.pointcloud_path + t,
-                ], logger=self.logger))
+                ], logger=self.logger)
 
-        # wait for pointcloud exports to finish
-        for p in pointcloud_export_processes:
-            p.wait()
-
+        log_and_print('Zipping pointclouds', self.logger)
         # zip pointclouds
         shutil.make_archive(self.output_path + '/pointcloud', 'zip', self.pointcloud_path)
 
         if not self.keep:
             # cleanup
             shutil.rmtree(self.pointcloud_path)
+
+        log_and_print('Pointcould parsing finished', self.logger)
 
     def export_images(self, image_topic_name):
         # export images
@@ -172,10 +177,12 @@ class ROS2BagParser:
 
     def create_preview(self, image_path):
         if not self.preview_topics:
-            print('No preview topics provided, skipping step')
+            log_and_print('No preview topics provided, skipping step', self.logger)
             if self.logger:
                 self.logger.info('No preview topics provided, skipping step')
             return
+        else:
+            log_and_print('Creating preview images', self.logger)
 
         # unite images
         cmd = ['python3', self.script_path + '/create_preview/create_preview.py', '-o', self.preview_path]
@@ -210,6 +217,7 @@ class ROS2BagParser:
             shutil.rmtree(self.preview_path)
 
     def sync_and_export_images(self):
+        log_and_print('Synchronizing images', self.logger)
         # syncronize
         run_logged_subprocess([
             'ros2', 'bag', 'sync',
@@ -236,6 +244,7 @@ class ROS2BagParser:
         for t in image_export_threads:
             t.join()
 
+        log_and_print('Zipping images', self.logger)
         # zip images in a separate process
         zipping_process = multiprocessing.Process(
                 target=shutil.make_archive,
@@ -245,11 +254,13 @@ class ROS2BagParser:
         zipping_process.join()
 
     def parse_images(self):
+        log_and_print('Image parsing started', self.logger)
         # with blurring
         if self.blurred_path:
             # get blurring model
             torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True, force_reload=True)
 
+            log_and_print('Exporting and blurring images', self.logger)
             # export and blur images
             image_export_threads = []
             for t in self.image_topic_names:
@@ -290,6 +301,7 @@ class ROS2BagParser:
 
         # without blurring
         else:
+            log_and_print('Exporting images', self.logger)
             # export images
             image_export_threads = []
             for t in self.image_topic_names:
@@ -329,7 +341,11 @@ class ROS2BagParser:
             if self.blurred_path:
                 shutil.rmtree(self.blurred_path)
 
+        log_and_print('Image parsing finished', self.logger)
+
     def parse_misc(self):
+        log_and_print('Misc parsing started', self.logger)
+        log_and_print('Extracting misc topics', self.logger)
         # extract misc topics
         run_logged_subprocess([
             'ros2', 'bag', 'extract',
@@ -338,6 +354,7 @@ class ROS2BagParser:
             '-o', self.misc_path
             ], logger=self.logger)
 
+        log_and_print('Converting misc topics', self.logger)
         # convert to csv
         run_logged_subprocess(['ros2bag-convert', self.misc_path + '/misc_topics_0.db3'], logger=self.logger)
 
@@ -353,7 +370,10 @@ class ROS2BagParser:
             os.remove(self.misc_path + '/metadata.yaml')
             os.remove(self.misc_path + '/misc_topics_0.db3')
 
+        log_and_print('Misc parsing finished', self.logger)
+
     def zip_bag(self):
+        log_and_print('Zipping ros2 bag', self.logger)
         # zip original bag
         with zipfile.ZipFile(self.output_path + '/bag.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
             zipf.write(self.bag, arcname=os.path.basename(self.bag))
@@ -361,7 +381,7 @@ class ROS2BagParser:
     def parse_ros2bag(self):
         # make output dir
         if os.path.isdir(self.output_path) and os.listdir(self.output_path):
-            print('Error: output path is a non-empty folder.')
+            log_and_print('Error: output path is a non-empty folder.', self.logger)
             exit()
         os.makedirs(self.output_path, exist_ok=True)
 
@@ -385,6 +405,8 @@ class ROS2BagParser:
         threading.Thread(target=self.parse_pointclouds).start()
         threading.Thread(target=self.parse_misc).start()
         self.parse_images()
+
+        log_and_print('Finished', self.logger)
 
 
 def load_config_file(config_path):
