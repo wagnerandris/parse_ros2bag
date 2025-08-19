@@ -83,7 +83,10 @@ class ROS2BagParser:
                  output_path,
                  blur,
                  keep,
+                 zip_,
                  sync,
+                 sync_slop,
+                 sync_topics,
                  topic_blacklist,
                  preview_config, preview_topics, preview_cols, preview_rows, preview_image_width, preview_image_height,
                  ffmpeg_options, ffmpeg_input_options, ffmpeg_output_options,
@@ -100,7 +103,11 @@ class ROS2BagParser:
         self.misc_path = os.path.join(output_path, 'misc_topics')
 
         self.keep = keep
+        self.zip = zip_
+
         self.sync = sync
+        self.sync_slop = sync_slop
+        self.sync_topics = ['/' + t for t in sync_topics] # topics begint with / for some reason
         self.topic_blacklist = ['/' + t for t in topic_blacklist] # topics begint with / for some reason
 
         self.preview_config = preview_config
@@ -117,6 +124,9 @@ class ROS2BagParser:
         self.logger = logger
 
     def parse_pointclouds(self):
+        if not self.pointcloud_topic_names:
+            return
+
         log_and_print('Pointcloud parsing started', self.logger)
         log_and_print('Exporting pointcoulds', self.logger)
         # export pointclouds
@@ -128,11 +138,11 @@ class ROS2BagParser:
                 '--dir', self.pointcloud_path + t,
                 ], logger=self.logger)
 
-        log_and_print('Zipping pointclouds', self.logger)
-        # zip pointclouds
-        shutil.make_archive(self.output_path + '/pointcloud', 'zip', self.pointcloud_path)
+        if self.zip:
+            log_and_print('Zipping pointclouds', self.logger)
+            shutil.make_archive(self.output_path + '/pointcloud', 'zip', self.pointcloud_path)
 
-        if not self.keep:
+        if not self.keep and self.zip:
             # cleanup
             shutil.rmtree(self.pointcloud_path)
 
@@ -201,16 +211,18 @@ class ROS2BagParser:
 
         # create video
         if self.logger:
-            self.logger.info('Creating video with {cmd}')
-        cmd = [
-            "ffmpeg",
+            self.logger.info(f'Creating video with {cmd}')
+        cmd = ["ffmpeg"]
+        if self.logger:
+            cmd.append("-nostats")
+        cmd += [
             *self.ffmpeg_options.split(),
             *self.ffmpeg_input_options.split(),
             "-i", "frame_%04d.jpg",
             *self.ffmpeg_output_options.split(),
             f"{self.output_path}/preview.mp4"
             ]
-        subprocess.run(cmd, cwd=self.preview_path) # not logged because it has such a stupid refreshing line
+        run_logged_subprocess(cmd, cwd=self.preview_path, logger=self.logger)
 
         # cleanup
         if not self.keep:
@@ -219,12 +231,15 @@ class ROS2BagParser:
     def sync_and_export_images(self):
         log_and_print('Synchronizing images', self.logger)
         # syncronize
-        run_logged_subprocess([
+        cmd = [
             'ros2', 'bag', 'sync',
             self.bag,
-            '-t', *self.image_topic_names,
+            '-t', *self.sync_topics,
             '-o', self.synced_path
-            ], logger=self.logger)
+            ]
+        if self.sync_slop:
+            cmd.append(f'--slop {self.sync_slop}')
+        run_logged_subprocess(cmd, logger=self.logger)
 
         # export synced images
         synced_image_export_processes = []
@@ -254,6 +269,9 @@ class ROS2BagParser:
         zipping_process.join()
 
     def parse_images(self):
+        if not self.image_topic_names:
+            return
+
         log_and_print('Image parsing started', self.logger)
         # with blurring
         if self.blurred_path:
@@ -267,10 +285,11 @@ class ROS2BagParser:
                 image_export_threads.append(threading.Thread(target=self.export_and_blur_images, args=(t,)))
                 image_export_threads[-1].start()
 
-            # zip images
-            zipping_thread = threading.Thread(
-                    target=self.zip_images, args=(image_export_threads, self.blurred_path))
-            zipping_thread.start()
+            if self.zip:
+                # zip images
+                zipping_thread = threading.Thread(
+                        target=self.zip_images, args=(image_export_threads, self.blurred_path))
+                zipping_thread.start()
 
             # sync if needed
             if self.sync:
@@ -309,9 +328,10 @@ class ROS2BagParser:
                 image_export_threads[-1].start()
 
             # zip images
-            zipping_thread = threading.Thread(
-                    target=self.zip_images, args=(image_export_threads, self.image_path))
-            zipping_thread.start()
+            if self.zip:
+                zipping_thread = threading.Thread(
+                        target=self.zip_images, args=(image_export_threads, self.image_path))
+                zipping_thread.start()
 
             if self.sync:
                 synced_image_export_processes = self.sync_and_export_images()
@@ -331,19 +351,24 @@ class ROS2BagParser:
 
         # cleanup
         if not self.keep:
-            zipping_thread.join()
-
-            shutil.rmtree(self.image_path)
+            if self.zip:
+                zipping_thread.join()
+                shutil.rmtree(self.image_path)
+                if self.blurred_path:
+                    shutil.rmtree(self.blurred_path)
+            else:
+                if self.blurred_path:
+                    shutil.rmtree(self.image_path)
 
             if self.sync:
                 shutil.rmtree(self.synced_path)
 
-            if self.blurred_path:
-                shutil.rmtree(self.blurred_path)
-
         log_and_print('Image parsing finished', self.logger)
 
     def parse_misc(self):
+        if not self.misc_topic_names:
+            return
+
         log_and_print('Misc parsing started', self.logger)
         log_and_print('Extracting misc topics', self.logger)
         # extract misc topics
@@ -358,7 +383,7 @@ class ROS2BagParser:
         # convert to csv
         run_logged_subprocess(['ros2bag-convert', self.misc_path + '/misc_topics_0.db3'], logger=self.logger)
 
-        if 'fix' in self.misc_topic_names:
+        if '/fix' in self.misc_topic_names:
             # convert to kml
             run_logged_subprocess([
                 'python3', self.script_path + '/ros2-csv-kml_converter/csv-to-kml.py',
@@ -378,6 +403,40 @@ class ROS2BagParser:
         with zipfile.ZipFile(self.output_path + '/bag.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
             zipf.write(self.bag, arcname=os.path.basename(self.bag))
 
+    def sort_topics(self):
+        log_and_print('Sorting topics', self.logger)
+        # get topics
+        info = rosbag2_py.Info()
+        metadata = info.read_metadata(self.bag, 'sqlite3')
+
+        # separate topic types we care about into lists
+        if self.sync:
+            new_sync_topics = []
+            for t in metadata.topics_with_message_count:
+                if t.topic_metadata.name in self.topic_blacklist:
+                    continue
+
+                if t.topic_metadata.name in self.sync_topics:
+                    new_sync_topics.append(t.topic_metadata.name)
+
+                topic_names = self.topic_types.get(t.topic_metadata.type)
+                if topic_names is not None:
+                    topic_names.append(t.topic_metadata.name)
+
+            if new_sync_topics:
+                self.sync_topics = new_sync_topics
+            else:
+                self.sync = False
+                log_and_print('Sync topics not found, skipping step', self.logger)
+        else:
+            for t in metadata.topics_with_message_count:
+                if t.topic_metadata.name in self.topic_blacklist:
+                    continue
+
+                topic_names = self.topic_types.get(t.topic_metadata.type)
+                if topic_names is not None:
+                    topic_names.append(t.topic_metadata.name)
+
     def parse_ros2bag(self):
         # make output dir
         if os.path.isdir(self.output_path) and os.listdir(self.output_path):
@@ -386,26 +445,24 @@ class ROS2BagParser:
         os.makedirs(self.output_path, exist_ok=True)
 
         # start zipping original bag
-        multiprocessing.Process(target=self.zip_bag).start()
+        if self.zip:
+            bag_zipping_process = multiprocessing.Process(target=self.zip_bag)
+            bag_zipping_process.start()
 
-        # get topics
-        info = rosbag2_py.Info()
-        metadata = info.read_metadata(self.bag, 'sqlite3')
-
-        # separate topic types we care about into lists
-        for t in metadata.topics_with_message_count:
-            if t.topic_metadata.name in self.topic_blacklist:
-                continue
-
-            topic_names = self.topic_types.get(t.topic_metadata.type)
-            if topic_names is not None:
-                topic_names.append(t.topic_metadata.name)
+        # put topics into different lists based on types and options
+        self.sort_topics()
 
         # start independent parsing pipelines
-        threading.Thread(target=self.parse_pointclouds).start()
-        threading.Thread(target=self.parse_misc).start()
+        pointcloud_parser_thread = threading.Thread(target=self.parse_pointclouds)
+        pointcloud_parser_thread.start()
+        misc_parser_thread = threading.Thread(target=self.parse_misc)
+        misc_parser_thread.start()
         self.parse_images()
 
+        if self.zip:
+            bag_zipping_process.join()
+        pointcloud_parser_thread.join()
+        misc_parser_thread.join()
         log_and_print('Finished', self.logger)
 
 
@@ -414,7 +471,10 @@ def load_config_file(config_path):
             'output_dir': str,
             'blur': bool,
             'keep_intermediary': bool,
+            'zip': bool,
             'sync': bool,
+            'sync_slop': float,
+            'sync_topics': list,
             'topic_blacklist': list,
             'preview_topics': list,
             'preview_cols': int,
@@ -476,13 +536,23 @@ if __name__ == '__main__':
                         dest='keep_intermediary',
                         action='store_false',
                         help='Do not keep intermediary files')
+    parser.add_argument('-z', '--zip',
+                        action='store_true', default=True,
+                        help='Zip results')
+    parser.add_argument('-nz', '--no_zip',
+                        dest='zip',
+                        action='store_false',
+                        help='Do not zip results')
     parser.add_argument('-s', '--sync',
                         action='store_true', default=True,
-                        help='Sync images')
+                        help='Sync topics')
     parser.add_argument('-ns', '--no_sync',
                         dest='sync',
                         action='store_false',
-                        help='Do not sync images')
+                        help='Do not sync topics')
+    parser.add_argument('-ss', '--sync_slop',
+                        type=float,
+                        help='Synchronization slope/error')
     parser.add_argument('-pc', '--preview_config',
                         type=str,
                         help='Path to config file for create_preview.py')
@@ -529,7 +599,10 @@ if __name__ == '__main__':
                                os.path.realpath(args.output_dir),
                                args.blur,
                                args.keep_intermediary,
+                               args.zip,
                                args.sync,
+                               args.sync_slop,
+                               getattr(args, 'sync_topics', []),
                                getattr(args, 'topic_blacklist', []),
                                getattr(args, 'preview_config', None),
                                getattr(args, 'preview_topics', None),

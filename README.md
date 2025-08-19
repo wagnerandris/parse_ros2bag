@@ -1,7 +1,3 @@
-## TODO:
-- Add logging -- something similar, as if running the current version with `2>&1 | tee output.txt`
-- Clean up `requirements.txt`
-
 # parse_ros2bag
 A python script to parse a ROS2 bags content into separate image, video, pointcloud and csv files.
 
@@ -79,7 +75,7 @@ A python script to parse a ROS2 bags content into separate image, video, pointcl
  	```
 13. **ALL DONE** Use the parser with the options provided in:
     ```
-    python3 parse_ros2bags.py -h
+    python3 parse_ros2bag.py -h
     ```
 
 # Usage
@@ -98,6 +94,11 @@ The following options can be specified in a yaml config file (given in the optio
 output_dir: str,
 blur: bool,
 keep_intermediary: bool,
+zip: bool,
+sync: bool,
+sync_slop: float,
+sync_topics: list,
+topic_blacklist: list,
 preview_topics: list,
 preview_cols: int,
 preview_rows: int,

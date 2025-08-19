@@ -1,7 +1,15 @@
 output_dir: 'convert'
 blur: true
 keep_intermediary: false
+zip: true
 sync: true
+sync_topics:
+  - image_0_
+  - image_1_
+  - image_2_
+  - image_3_
+  - image_4_
+  - image_5_
 topic_blacklist:
   - rosout
 preview_topics:
@@ -14,4 +22,3 @@ preview_topics:
 preview_cols: 2
 preview_rows: 3
 ffmpeg_input_options: '-framerate 12'
-ffmpeg_output_options: '-vf format=gray'
