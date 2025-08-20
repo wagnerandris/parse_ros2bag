@@ -238,7 +238,8 @@ class ROS2BagParser:
             '-o', self.synced_path
             ]
         if self.sync_slop:
-            cmd.append(f'--slop {self.sync_slop}')
+            cmd.append(f'--slop {str(self.sync_slop)}')
+        print(cmd)
         run_logged_subprocess(cmd, logger=self.logger)
 
         # export synced images
@@ -473,7 +474,7 @@ def load_config_file(config_path):
             'keep_intermediary': bool,
             'zip': bool,
             'sync': bool,
-            'sync_slop': float,
+            'sync_slop': int,
             'sync_topics': list,
             'topic_blacklist': list,
             'preview_topics': list,
@@ -551,7 +552,7 @@ if __name__ == '__main__':
                         action='store_false',
                         help='Do not sync topics')
     parser.add_argument('-ss', '--sync_slop',
-                        type=float,
+                        type=int,
                         help='Synchronization slope/error')
     parser.add_argument('-pc', '--preview_config',
                         type=str,
