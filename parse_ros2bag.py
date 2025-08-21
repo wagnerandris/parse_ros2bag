@@ -235,7 +235,7 @@ class ROS2BagParser:
         with open(self.synced_path + '/filters.config', 'w') as file:
             file.write(sync_config)
 
-        export_config = [f'{t} image --dir {t[1:]}\n' for t in self.sync_topics if t in self.image_topic_names]
+        export_config = [f'{t} image --dir {t[1:]}\n' for t in self.sync_topics if t in self.preview_topics]
         with open(self.synced_path + '/export.config', 'w') as file:
             file.writelines(export_config)
 
@@ -511,6 +511,9 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--output_dir',
                         type=str, required=False, default='./convert',
                         help='Path to the output folder')
+    parser.add_argument('-tb', '--topic_blacklist',
+                        nargs='*',
+                        help='Topics not to parse')
     parser.add_argument('-b', '--blur',
                         action='store_true',
                         help='Blur faces and license plates')
@@ -542,9 +545,15 @@ if __name__ == '__main__':
     parser.add_argument('-ss', '--sync_slop',
                         type=float,
                         help='Synchronization slope/error')
+    parser.add_argument('-st', '--sync_topics',
+                        nargs='*',
+                        help='Topics to synchronize for preview creation')
     parser.add_argument('-pc', '--preview_config',
                         type=str,
                         help='Path to config file for create_preview.py')
+    parser.add_argument('-pt', '--preview_topics',
+                        nargs='*',
+                        help='Topics to use in preview creation')
     parser.add_argument('-l', '--logfile',
                         type=str,
                         help='Path to log file')
@@ -583,6 +592,8 @@ if __name__ == '__main__':
     else:
         logger = None
         print('Starting parser...')
+
+    exit()
 
     bag_parser = ROS2BagParser(os.path.realpath(args.input),
                                os.path.realpath(args.output_dir),
