@@ -168,12 +168,9 @@ class ROS2BagParser:
             cwd=self.script_path + '/person_and_licenceplate_blurring',
             logger=self.logger)
 
-    def copy_blurred(self, thread, proc, topic):
+    def copy_blurred(self, thread, topic):
         # wait for blur thread
         thread.join()
-
-        # wait for synced export process
-        proc.wait()
 
         # go through synced images' folder and copy their blurred version in it
         for f in os.listdir(self.synced_path + topic):
@@ -230,30 +227,24 @@ class ROS2BagParser:
 
     def sync_and_export_images(self):
         log_and_print('Synchronizing images', self.logger)
-        # syncronize
-        cmd = [
-            'ros2', 'bag', 'sync',
-            self.bag,
-            '-t', *self.sync_topics,
-            '-o', self.synced_path
-            ]
+        # create config files
+        os.makedirs(self.synced_path)
+        sync_config = f'sync -t {' '.join(self.sync_topics)}'
         if self.sync_slop:
-            cmd.append(f'--slop {str(self.sync_slop)}')
-        print(cmd)
-        run_logged_subprocess(cmd, logger=self.logger)
+            sync_config += f' --slop {str(self.sync_slop)}'
+        with open(self.synced_path + '/filters.config', 'w') as file:
+            file.write(sync_config)
 
-        # export synced images
-        synced_image_export_processes = []
-        for t in self.image_topic_names:
-            synced_image_export_processes.append(Popen_logged_subprocess([
-                'ros2', 'bag', 'export',
-                '--in', self.synced_path + '/synced_topics_0.db3',
-                '-t', t, 'image',
-                '--dir', self.synced_path + t,
-                ], logger=self.logger))
+        export_config = [f'{t} image --dir {t[1:]}\n' for t in self.sync_topics if t in self.image_topic_names]
+        with open(self.synced_path + '/export.config', 'w') as file:
+            file.writelines(export_config)
 
-        # return processes so they can be waited on
-        return synced_image_export_processes
+        # syncronize and export images
+        cmd = ['ros2', 'bag', 'export',
+               '--in', self.bag,
+               '-f', 'filters.config',
+               '-c', 'export.config']
+        run_logged_subprocess(cmd, cwd=self.synced_path, logger=self.logger)
 
     def zip_images(self, image_export_threads, image_path):
         # wait for image exports to finish
@@ -294,13 +285,12 @@ class ROS2BagParser:
 
             # sync if needed
             if self.sync:
-                synced_image_export_processes = self.sync_and_export_images()
+                self.sync_and_export_images()
 
                 # copy blurred versions into synced images
                 copying_threads = []
                 # for each topic we'll have to wait for all previous exports
                 for thread, proc, topic in zip(image_export_threads,
-                                               synced_image_export_processes,
                                                self.image_topic_names):
                     copying_threads.append(threading.Thread(
                         target=self.copy_blurred, args=(thread, proc, topic)))
@@ -335,12 +325,10 @@ class ROS2BagParser:
                 zipping_thread.start()
 
             if self.sync:
-                synced_image_export_processes = self.sync_and_export_images()
+                # sync
+                self.sync_and_export_images()
 
                 # create preview video
-                # wait for all synced exports
-                for p in synced_image_export_processes:
-                    p.wait()
                 self.create_preview(self.synced_path)
 
             else:
@@ -474,7 +462,7 @@ def load_config_file(config_path):
             'keep_intermediary': bool,
             'zip': bool,
             'sync': bool,
-            'sync_slop': int,
+            'sync_slop': float,
             'sync_topics': list,
             'topic_blacklist': list,
             'preview_topics': list,
@@ -552,7 +540,7 @@ if __name__ == '__main__':
                         action='store_false',
                         help='Do not sync topics')
     parser.add_argument('-ss', '--sync_slop',
-                        type=int,
+                        type=float,
                         help='Synchronization slope/error')
     parser.add_argument('-pc', '--preview_config',
                         type=str,
@@ -596,7 +584,7 @@ if __name__ == '__main__':
         logger = None
         print('Starting parser...')
 
-    bag_parser = ROS2BagParser(args.input,
+    bag_parser = ROS2BagParser(os.path.realpath(args.input),
                                os.path.realpath(args.output_dir),
                                args.blur,
                                args.keep_intermediary,
