@@ -38,7 +38,7 @@ A python script to parse a ROS2 bags content into separate image, video, pointcl
 0. Have a working ROS2 Humble install, described in prerequisites.
 1. Clone this repo, with the submodules
    ```
-   git clone --recurse-submodules
+   git clone --recurse-submodules https://github.com/wagnerandris/parse_ros2bag.git
    ```
 5. Source your main ROS2 underlay with
    ```
@@ -109,4 +109,10 @@ ffmpeg_options: str,
 ffmpeg_input_options: str,
 ffmpeg_output_options: str,
 logfile: str,
+verbose: bool
 ```
+
+## Logging
+ - By default the script outputs logs on the standard output.
+ - If a logfile is provided, but the verbose option is not used, the same messages are saved in the file with timestamps and threads being indicated, while only some basic messages are written on the standard output.
+ - If the verbose option is used, the same more detailed logs are put on the standard output.

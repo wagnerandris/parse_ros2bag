@@ -510,6 +510,7 @@ def load_config_file(config_path):
             'ffmpeg_input_options': str,
             'ffmpeg_output_options': str,
             'logfile': str,
+            'verbose': bool
     }
 
     with open(config_path, 'r') as f:
@@ -592,6 +593,9 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--logfile',
                         type=str,
                         help='Path to log file')
+    parser.add_argument('--verbose',
+                        action='store_true',
+                        help='Print every log message to the terminal')
     args_config, remaining_argv = parser.parse_known_args()
 
     # load config file if it exists
@@ -610,20 +614,25 @@ if __name__ == '__main__':
 
     print(f'Parsed args: {args}')
 
+    handlers = []
+
     if args.logfile:
+        handlers.append(logging.FileHandler(args.logfile))
+        print(f'Starting parser... find more detailed logs in {args.logfile}')
+    if args.verbose:
+        handlers.append(logging.StreamHandler())
+        print('Starting parser...')
+
+    if handlers:
         # Configure logging
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s',
-            handlers=[
-                logging.FileHandler(args.logfile),
-                # logging.StreamHandler()
-            ]
+            handlers=handlers
         )
 
         logger = logging.getLogger(__name__)
         logger.info(f'Parsed args: {args}')
-        print(f'Starting parser... find more detailed logs in {args.logfile}')
     else:
         logger = None
         print('Starting parser...')
