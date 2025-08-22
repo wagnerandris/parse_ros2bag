@@ -232,7 +232,7 @@ class ROS2BagParser:
     def sync_and_export_images(self):
         log_and_print('Synchronizing topics', self.logger)
         # create config file
-        sync_config = f'extract -t {' '.join(self.sync_topics)}\nsync -t {' '.join(self.sync_topics)}'
+        sync_config = f'extract -t {" ".join(self.sync_topics)}\nsync -t {" ".join(self.sync_topics)}'
         if self.sync_slop:
             sync_config += f' --slop {str(self.sync_slop)}'
         with open(self.output_path + '/sync.config', 'w') as file: # sync needs an empty folder
