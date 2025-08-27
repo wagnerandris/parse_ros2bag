@@ -402,7 +402,6 @@ class ROS2BagParser:
                 ], logger=self.logger)
 
         if not self.keep:
-            os.remove(self.misc_path + '/fix.csv')
             os.remove(self.misc_path + '/metadata.yaml')
             os.remove(self.misc_path + '/misc_topics_0.db3')
 

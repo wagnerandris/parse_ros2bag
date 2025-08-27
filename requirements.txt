@@ -2,25 +2,6 @@ action_msgs
 action_tutorials_interfaces
 action_tutorials_py
 actionlib_msgs
-# ament_clang_format
-# ament_clang_tidy
-# ament_cmake_google_benchmark
-# ament_cmake_test
-# ament_copyright
-# ament_cppcheck
-# ament_cpplint
-# ament_flake8
-# ament_index_python
-# ament_lint
-# ament_lint_cmake
-# ament_mypy
-# ament_package
-# ament_pclint
-# ament_pep257
-# ament_pycodestyle
-# ament_pyflakes
-# ament_uncrustify
-# ament_xmllint
 angles
 builtin_interfaces
 certifi
@@ -34,19 +15,17 @@ demo_nodes_py
 diagnostic_msgs
 dill
 domain_coordinator
-example_interfaces
-examples_rclpy_executors
-#examples_rclpy_guard_conditions
-examples_rclpy_minimal_action_client
-examples_rclpy_minimal_action_server
-examples_rclpy_minimal_client
-examples_rclpy_minimal_publisher
-examples_rclpy_minimal_service
-examples_rclpy_minimal_subscriber
+# example_interfaces
+# examples_rclpy_executors
+# examples_rclpy_minimal_action_client
+# examples_rclpy_minimal_action_server
+# examples_rclpy_minimal_client
+# examples_rclpy_minimal_publisher
+# examples_rclpy_minimal_service
+# examples_rclpy_minimal_subscriber
 filelock
 fonttools
 fsspec
-#geodesy
 geographic_msgs
 geometry_msgs
 gitdb
@@ -60,7 +39,6 @@ laser_geometry
 launch
 launch_ros
 launch_testing
-#launch_testing_examples
 launch_testing_ros
 launch_xml
 launch_yaml
