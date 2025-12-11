@@ -1,8 +1,11 @@
-output_dir: 'convert'
+output_dir: '/home/teszt/bagfiles/recompresstest/convert'
+logfile: './convert.log'
+verbose: true
 blur: true
 keep_intermediary: false
-zip: true
-sync: true
+zip: false
+sync: false
+sync_slop: 0.125
 sync_topics:
   - image_0_
   - image_1_
@@ -12,13 +15,18 @@ sync_topics:
   - image_5_
 topic_blacklist:
   - rosout
+  - velodyne_points
 preview_topics:
+  - image_3_
+  - image_4_
   - image_1_
   - image_2_
   - image_0_
   - image_5_
-  - image_3_
-  - image_4_
 preview_cols: 2
 preview_rows: 3
 ffmpeg_input_options: '-framerate 12'
+#FFMPEG options for nvidia cards
+#ffmpeg_output_options: '-vf scale=1920:-2 -c:v hevc_nvenc -preset slow -rc constqp -qp 17 -tune hq -pix_fmt yuv420p'
+#FFMPEG options for CPU encoding
+ffmpeg_output_options: '-vf scale=1920:-2 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p'
