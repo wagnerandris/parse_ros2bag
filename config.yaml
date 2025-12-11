@@ -4,23 +4,23 @@ verbose: true
 blur: true
 keep_intermediary: true
 zip: true
-sync: false
+sync: true
 sync_slop: 0.1
 
 #Do not forget to adjust the sync_topics and preview_topics according to your bag content
 #RAW and Compresed images are in different topics!!!
 
 sync_topics:
-  - image_0_
-  - image_1_
-  - image_2_
-  - image_3_
-  - image_4_
-  - image_5_
-preview_topics:
   - image_0_c
   - image_1_c
   - image_2_c
+  - image_3_c
+  - image_4_c
+  - image_5_c
+preview_topics:
+  - image_0_c
+  - image_2_c
+  - image_1_c
   - image_3_c
 topic_blacklist:
   - rosout
@@ -29,6 +29,6 @@ preview_cols: 2
 preview_rows: 2
 ffmpeg_input_options: '-framerate 12'
 #FFMPEG options for nvidia cards
-#ffmpeg_output_options: '-vf scale=1920:-2 -c:v hevc_nvenc -preset slow -rc constqp -qp 17 -tune hq -pix_fmt yuv420p'
+ffmpeg_output_options: '-vf scale=1920:-2 -c:v hevc_nvenc -preset slow -rc constqp -qp 17 -tune hq -pix_fmt yuv420p'
 #FFMPEG options for CPU encoding
-ffmpeg_output_options: '-vf scale=1920:-2 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p'
+#ffmpeg_output_options: '-vf scale=1920:-2 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p'
