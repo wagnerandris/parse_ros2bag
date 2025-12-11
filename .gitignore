@@ -6,3 +6,6 @@ convert/
 src/rcl_interfaces/test_msgs
 log.txt
 output.txt
+convert.log
+yolov5s.pt
+converted/

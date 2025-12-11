@@ -1,11 +1,15 @@
-output_dir: '/home/teszt/bagfiles/recompresstest/convert'
+output_dir: './converted'
 logfile: './convert.log'
 verbose: true
 blur: true
-keep_intermediary: false
-zip: false
+keep_intermediary: true
+zip: true
 sync: false
-sync_slop: 0.125
+sync_slop: 0.1
+
+#Do not forget to adjust the sync_topics and preview_topics according to your bag content
+#RAW and Compresed images are in different topics!!!
+
 sync_topics:
   - image_0_
   - image_1_
@@ -13,18 +17,16 @@ sync_topics:
   - image_3_
   - image_4_
   - image_5_
+preview_topics:
+  - image_0_c
+  - image_1_c
+  - image_2_c
+  - image_3_c
 topic_blacklist:
   - rosout
   - velodyne_points
-preview_topics:
-  - image_3_
-  - image_4_
-  - image_1_
-  - image_2_
-  - image_0_
-  - image_5_
 preview_cols: 2
-preview_rows: 3
+preview_rows: 2
 ffmpeg_input_options: '-framerate 12'
 #FFMPEG options for nvidia cards
 #ffmpeg_output_options: '-vf scale=1920:-2 -c:v hevc_nvenc -preset slow -rc constqp -qp 17 -tune hq -pix_fmt yuv420p'
