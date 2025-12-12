@@ -69,6 +69,7 @@ class ROS2BagParser:
 
     topic_types = {
             'sensor_msgs/msg/Image': image_topic_names,
+            'sensor_msgs/msg/CompressedImage': image_topic_names,
             'sensor_msgs/msg/PointCloud2': pointcloud_topic_names,
             'sensor_msgs/msg/NavSatFix': misc_topic_names,
             'sensor_msgs/msg/TimeReference': misc_topic_names,
